@@ -1,0 +1,295 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum DeviceUserRole {
+  GUEST
+  STUDENT
+  TEACHER
+}
+
+enum State {
+  ACTIVE
+  INACTIVE
+}
+
+enum Course {
+  BSA
+  BSCRIM
+  BEED
+  BSBA
+  BSCS
+  BSHM
+  BSTM
+}
+
+enum YearLevel {
+  FIRST
+  SECOND
+  THIRD
+  FOURTH
+}
+
+model User {
+  id                    String                 @id @default(cuid())
+  name                  String?
+  email                 String?                @unique
+  emailVerified         DateTime?
+  image                 String?
+  password              String?
+  accounts              Account[]
+  isTwoFactorEnabled    Boolean                @default(false)
+  twoFactorConfirmation TwoFactorConfirmation?
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model VerificationToken {
+  id      String   @id @default(cuid())
+  email   String
+  token   String   @unique
+  expires DateTime
+
+  @@unique([email, token])
+}
+
+model PasswordResetToken {
+  id      String   @id @default(cuid())
+  email   String
+  token   String   @unique
+  expires DateTime
+
+  @@unique([email, token])
+}
+
+model TwoFactorToken {
+  id      String   @id @default(cuid())
+  email   String
+  token   String   @unique
+  expires DateTime
+
+  @@unique([email, token])
+}
+
+model TwoFactorConfirmation {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+}
+
+model Labaratory {
+  id        String   @id @default(cuid())
+  name      String
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Device    Device[] @relation("LabToDevice")
+}
+
+model Device {
+  id            String     @id @default(uuid())
+  labId         String // Foreign Key to Store
+  lab           Labaratory @relation("LabToDevice", fields: [labId], references: [id])
+  name          String
+  devId         String
+  devHostname   String
+  devMACaddress String
+  isArchived    Boolean
+  isUsed        Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([labId])
+}
+
+model DeviceUser {
+  id        String         @id @default(uuid())
+  labId     String
+  schoolId  String         @unique
+  firstName String
+  lastName  String
+  email     String         @unique
+  course    Course
+  yearLevel YearLevel
+  contactNo String
+  address   String
+  password  String
+  role      DeviceUserRole @default(GUEST)
+  subjects  Subject[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+model DeviceUserActivity {
+  id          String   @id @default(uuid())
+  labId       String
+  userId      String
+  deviceId    String
+  title       String
+  time        DateTime
+  owner       String
+  memoryUsage Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ActiveDeviceUser {
+  id        String   @id @default(uuid())
+  labId     String
+  userId    String
+  deviceId  String
+  state     State    @default(INACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ActiveUserLogs {
+  id        String   @id @default(uuid())
+  labId     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  deviceId  String
+}
+
+model PowerMonitoringLogs {
+  id        String   @id @default(uuid())
+  pm_status String
+  pm_log_ts String
+  userId    String
+  deviceId  String
+  labId     String
+  createdAt DateTime @default(now())
+}
+
+model ActivityLogs {
+  id          String   @id @default(uuid())
+  title       String
+  ownerName   String
+  ownerPath   String
+  memoryUsage Int
+  userId      String
+  deviceId    String
+  labId       String
+  createdAt   DateTime @default(now())
+}
+
+model Subject {
+  id             String           @id @default(uuid())
+  name           String
+  description    String
+  subjectCode    String
+  labId          String
+  userId         String
+  user           DeviceUser       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  quizzes        Quiz[]
+  quizRecord     QuizRecord[]
+  activities     Activity[]
+  activityRecord ActivityRecord[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+model SubjectRecord {
+  id        String   @id @default(uuid())
+  subjectId String
+  userId    String
+  labId     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model QuizQuestion {
+  id        String   @id @default(uuid())
+  quizId    String
+  question  String
+  options   Json
+  type      String
+  time      Int
+  points    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Quiz      Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+}
+
+model Quiz {
+  id         String         @id @default(uuid())
+  subjectId  String
+  userId     String
+  title      String
+  subject    Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  author     String
+  color      String
+  visibility String
+  published  Boolean        @default(false)
+  questions  QuizQuestion[]
+  quizRecord QuizRecord[]
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+}
+
+model QuizRecord {
+  id             String   @id @default(uuid())
+  quizId         String
+  quiz           Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  subjectId      String
+  subject        Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId         String
+  score          Int
+  totalQuestions Int
+  completedAt    DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Activity {
+  id             String           @id @default(uuid())
+  subjectId      String
+  userId         String
+  labId          String
+  name           String
+  description    String
+  published      Boolean          @default(false)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  subject        Subject          @relation(fields: [subjectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  activityRecord ActivityRecord[]
+}
+
+model ActivityRecord {
+  id          String   @id @default(uuid())
+  activityId  String
+  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId      String
+  completed   Boolean  @default(false)
+  completedAt DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  subject     Subject  @relation(fields: [subjectId], references: [id])
+  subjectId   String
+}
