@@ -41,40 +41,47 @@ const SetupLayout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center p-6">
+    <div className="h-screen w-screen flex items-center justify-center bg-gray-50">
       <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
+        initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="w-full h-full"
       >
-        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-6 flex items-center justify-between">
+        <div className="bg-white/80 backdrop-blur-lg h-full w-full border border-gray-200 flex flex-col">
+          <div className="bg-gradient-to-r from-[#C9121F] to-[#EBC42E] p-6 flex items-center justify-between sticky top-0 z-50">
             <div className="flex items-center">
-              <FiSettings className="text-white text-4xl animate-spin-slow" />
-              <h1 className="text-3xl font-bold text-white ml-4">Setup Wizard</h1>
+              <FiSettings className="text-white text-3xl animate-spin-slow" />
+              <h1 className="text-2xl font-bold text-white ml-4">Setup Wizard</h1>
             </div>
-            <div className="flex items-center space-x-2">
-              <button onClick={handleMinimize} className="text-white hover:text-gray-200 transition-colors">
+            <div className="flex items-center space-x-4">
+              <button 
+                onClick={handleMinimize} 
+                className="text-white/80 hover:text-white transition-colors"
+              >
                 <FiMinus className="text-xl" />
               </button>
-              <button onClick={handleExit} className="text-white hover:text-gray-200 transition-colors">
+              <button 
+                onClick={handleExit} 
+                className="text-white/80 hover:text-white transition-colors"
+              >
                 <FiX className="text-xl" />
               </button>
             </div>
           </div>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
-              className="p-6"
-            >
-              <Outlet />
-            </motion.div>
-          </AnimatePresence>
+          <div className="flex-1 overflow-auto p-8">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Outlet />
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
       </motion.div>
     </div>

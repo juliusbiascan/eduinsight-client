@@ -1,6 +1,8 @@
-import { app, BrowserWindow, screen } from "electron";
+import { app, BrowserWindow, screen } from 'electron';
 import { WindowIdentifier } from '@/shared/constants';
-
+import ElectronShutdownHandler from '@paymoapp/electron-shutdown-handler';
+import { Database } from '.';
+import { machineIdSync } from 'node-machine-id';
 
 /**
  * @interface
@@ -10,7 +12,6 @@ interface WindowConfig {
   url: string;
   options: Electron.BrowserWindowConstructorOptions;
 }
-
 
 /**
  * BrowserWindow base configuration.
@@ -33,9 +34,8 @@ const kioskWindowConfig: Electron.BrowserWindowConstructorOptions = {
     nodeIntegration: true,
     allowRunningInsecureContent: true,
     webSecurity: false,
-  }
+  },
 };
-
 
 /**
  * BrowserWindow base configuration.
@@ -53,7 +53,10 @@ const baseWindowConfig: Electron.BrowserWindowConstructorOptions = {
  *
  * @constant
  */
-const sharedWindowConfigs: Record<string, Electron.BrowserWindowConstructorOptions> = {
+const sharedWindowConfigs: Record<
+  string,
+  Electron.BrowserWindowConstructorOptions
+> = {
   frameless: {
     ...baseWindowConfig,
     frame: false,
@@ -83,12 +86,11 @@ const windows: Record<string, Electron.BrowserWindow> = {};
  * @constant
  */
 const WINDOW_CONFIGS: Record<string, WindowConfig> = {
-
   [WindowIdentifier.Welcome]: {
     id: WindowIdentifier.Welcome,
     url: WELCOME_WINDOW_WEBPACK_ENTRY,
     options: {
-      title: "Welcome",
+      title: 'Welcome',
       ...baseWindowConfig,
       width: 600,
       height: 200,
@@ -106,7 +108,7 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
     url: MAIN_WINDOW_WEBPACK_ENTRY,
     options: {
       ...kioskWindowConfig,
-      title: "Main",
+      title: 'Main',
     },
   },
   [WindowIdentifier.Setup]: {
@@ -114,9 +116,9 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
     url: SETUP_WINDOW_WEBPACK_ENTRY,
     options: {
       ...baseWindowConfig,
-      title: "Setup Wizard",
-      width: 600,
-      height: 700,
+      title: 'Setup Wizard',
+      width: 500,
+      height: 550,
       center: true,
       show: true,
       frame: false,
@@ -134,14 +136,14 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
     url: SPLASH_WINDOW_WEBPACK_ENTRY,
     options: {
       ...sharedWindowConfigs.frameless,
-      title: "Splash",
+      title: 'Splash',
     },
   },
   [WindowIdentifier.Dashboard]: {
     id: WindowIdentifier.Dashboard,
     url: DASHBOARD_WINDOW_WEBPACK_ENTRY,
     options: {
-      title: "Dashboard",
+      title: 'Dashboard',
       ...baseWindowConfig,
       width: 800,
       height: 700,
@@ -158,19 +160,20 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
     id: WindowIdentifier.QuizTeacher,
     url: QUIZ_TEACHER_WINDOW_WEBPACK_ENTRY,
     options: {
-      title: "Quiz Teacher",
       ...baseWindowConfig,
+      title: 'Quiz Teacher',
+      width: 1080,
+      height: 800,
+      center: true,
       show: true,
       frame: false,
-      transparent: true,
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      alwaysOnTop: true,
       skipTaskbar: false,
-      minHeight: 700,
-      height: 700,
-      width: 1080,
+      useContentSize: true,
+      webPreferences: {
+        ...baseWindowConfig.webPreferences,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
     },
   },
   [WindowIdentifier.QuizPlayer]: {
@@ -178,7 +181,7 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
     url: QUIZ_PLAYER_WINDOW_WEBPACK_ENTRY,
     options: {
       ...kioskWindowConfig,
-      title: "Quiz Player",
+      title: 'Quiz Player',
     },
   },
   [WindowIdentifier.Settings]: {
@@ -188,7 +191,7 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
       ...sharedWindowConfigs.frameless,
       height: 600,
       width: 500,
-      title: "Settings",
+      title: 'Settings',
     },
   },
 };
@@ -202,8 +205,11 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
  * @param url     The url to the window's html page.
  * @param options Browser Window options object.
  */
-function create(id: string, url: string, options: Electron.BrowserWindowConstructorOptions) {
-
+function create(
+  id: string,
+  url: string,
+  options: Electron.BrowserWindowConstructorOptions,
+) {
   // if the provided screen id already exists with
   // an active handle then return that instead
   if (windows[id]) {
@@ -215,15 +221,13 @@ function create(id: string, url: string, options: Electron.BrowserWindowConstruc
 
   window.loadURL(url);
 
-  window.webContents.on("before-input-event",
-    (event, input) => {
-      if (input.code === 'F4' && input.alt) {
-        event.preventDefault();
-      } else if (input.control && input.alt && input.code === "DELETE") {
-        event.preventDefault();
-      }
+  window.webContents.on('before-input-event', (event, input) => {
+    if (input.code === 'F4' && input.alt) {
+      event.preventDefault();
+    } else if (input.control && input.alt && input.code === 'DELETE') {
+      event.preventDefault();
     }
-  );
+  });
 
   if (id === WindowIdentifier.Dashboard) {
     window.on('blur', () => {
@@ -257,7 +261,7 @@ function create(id: string, url: string, options: Electron.BrowserWindowConstruc
           clearInterval(fadeInterval);
         }
       }, 50);
-    }
+    };
 
     const fadeOut = (callback: () => void) => {
       let opacity = 1;
@@ -270,7 +274,7 @@ function create(id: string, url: string, options: Electron.BrowserWindowConstruc
           callback();
         }
       }, 50);
-    }
+    };
 
     setTimeout(() => {
       if (window) {
@@ -294,6 +298,34 @@ function create(id: string, url: string, options: Electron.BrowserWindowConstruc
       }
     });
   }
+  ElectronShutdownHandler.setWindowHandle(window.getNativeWindowHandle());
+  ElectronShutdownHandler.blockShutdown(
+    'Please wait for some data to be saved',
+  );
+
+  ElectronShutdownHandler.on('shutdown', () => {
+    console.log('Shutting down!');
+    Database.prisma.device.findFirst({ where: { devMACaddress: machineIdSync(true) } }).then((device) => {
+      Database.prisma.deviceUser.findFirst({ where: { id: device.id } }).then((deviceUser) => { 
+        Database.prisma.activeDeviceUser
+        .deleteMany({
+          where: {
+            deviceId: device.id,
+            userId: deviceUser.id,
+          },
+        })
+        .then(() => {
+          Database.prisma.device
+            .update({ where: { id: device.id }, data: { isUsed: false } })
+            .then(() => {
+              ElectronShutdownHandler.releaseShutdown();
+              window.webContents.send('shutdown');
+              app.quit();
+            });
+        });
+      });
+    });
+  });
 
   // de-reference the window object when its closed
   window.on('closed', () => delete windows[id]);
@@ -320,7 +352,6 @@ function get(id: string) {
   const config = WINDOW_CONFIGS[id];
   return create(id, config.url, config.options);
 }
-
 
 function getWindow(id: string) {
   return windows[id];

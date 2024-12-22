@@ -5,23 +5,29 @@ import { DeviceUser, DeviceUserRole, Quiz, QuizQuestion } from "@prisma/client";
 import { WindowIdentifier } from "@/shared/constants";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from 'canvas-confetti';
+import { Typography } from 'antd';
+
+const { Text } = Typography;
 
 interface QuizOption {
   text: string;
   isCorrect: boolean;
 }
 
-function QuizPlayer() {
+const QuizPlayer: React.FC = () => {
   const [quiz, setQuiz] = useState<Quiz & { questions: Array<QuizQuestion> } | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<(string | null)[]>([]);
   const [quizCompleted, setQuizCompleted] = useState(false);
-  const [quizId, setQuizId] = useState('');
   const [user, setUser] = useState<DeviceUser | null>(null);
   const [totalPoints, setTotalPoints] = useState(0);
   const [score, setScore] = useState(0);
   const [answerStatus, setAnswerStatus] = useState<'correct' | 'incorrect' | null>(null);
+  const [blankAnswers, setBlankAnswers] = useState<string[]>([]);
+  const [identificationAnswer, setIdentificationAnswer] = useState('');
+  const [enumerationAnswers, setEnumerationAnswers] = useState<string[]>([]);
+  const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
 
   const fetchQuiz = async (quizId: string) => {
     try {
@@ -31,6 +37,9 @@ function QuizPlayer() {
       }
 
       const quiz = fetchedQuiz[0];
+      // Sort questions by order before displaying
+      quiz.questions = quiz.questions.sort((a, b) => a.order - b.order);
+      
       setQuiz(quiz);
       setTimeLeft(quiz.questions[0].time);
       setSelectedAnswers(new Array(quiz.questions.length).fill(null));
@@ -60,7 +69,6 @@ function QuizPlayer() {
 
   useEffect(() => {
     api.quiz.getQuizId((event: any, quizId: string) => {
-      setQuizId(quizId);
       fetchQuiz(quizId);
     });
     fetchUserData();
@@ -100,6 +108,7 @@ function QuizPlayer() {
 
   const handleIncorrectAnswer = () => {
     setAnswerStatus('incorrect');
+    setShowCorrectAnswer(true);
     //new Audio('/sounds/wrong.mp3').play();
     const sadEmoji = document.createElement('div');
     sadEmoji.innerHTML = '😢';
@@ -113,6 +122,74 @@ function QuizPlayer() {
     });
     document.body.appendChild(sadEmoji);
     setTimeout(() => sadEmoji.remove(), 1000);
+
+    // Add timer to automatically proceed after showing correct answer
+    setTimeout(() => {
+      handleNextQuestion();
+    }, 3000); // Show correct answer for 3 seconds before proceeding
+  };
+
+  const getCorrectAnswerDisplay = (question: QuizQuestion) => {
+    const correctAnswers = JSON.parse(question.options as string);
+    
+    switch (question.type) {
+      case "Multiple Choice": {
+        const correctOption = correctAnswers.find((opt: QuizOption) => opt.isCorrect);
+        return (
+          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg w-full">
+            <div className="mb-2">
+              <Text strong className="text-green-700">Correct Answer:</Text>
+            </div>
+            <Text className="text-green-600">{correctOption?.text}</Text>
+          </div>
+        );
+      }
+
+      case "Fill in the Blank":
+        return (
+          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg w-full">
+            <div className="mb-2">
+              <Text strong className="text-green-700">Correct Answers:</Text>
+            </div>
+            {correctAnswers.map((answer: { text: string }, index: number) => (
+              <div key={index} className="text-green-600">
+                <Text>Blank {index + 1}: {answer.text}</Text>
+              </div>
+            ))}
+          </div>
+        );
+
+      case "Identification":
+        return (
+          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg w-full">
+            <div className="mb-2">
+              <Text strong className="text-green-700">Accepted Answers:</Text>
+            </div>
+            {correctAnswers.map((answer: { text: string }, index: number) => (
+              <div key={index} className="text-green-600">
+                <Text>{answer.text}</Text>
+              </div>
+            ))}
+          </div>
+        );
+
+      case "Enumeration":
+        return (
+          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg w-full">
+            <div className="mb-2">
+              <Text strong className="text-green-700">Correct Answers:</Text>
+            </div>
+            {correctAnswers.map((answer: { text: string }, index: number) => (
+              <div key={index} className="text-green-600">
+                <Text>{index + 1}. {answer.text}</Text>
+              </div>
+            ))}
+          </div>
+        );
+
+      default:
+        return null;
+    }
   };
 
   const handleAnswerSelect = (answer: string) => {
@@ -130,19 +207,158 @@ function QuizPlayer() {
 
     if (selectedOption?.isCorrect) {
       handleCorrectAnswer(currentQuestion.points);
+      setTimeout(handleNextQuestion, 1500);
     } else {
       handleIncorrectAnswer();
     }
+  };
 
-    setTimeout(() => {
-      setAnswerStatus(null);
-      if (currentQuestionIndex < quiz.questions.length - 1) {
-        setCurrentQuestionIndex(prev => prev + 1);
-        setTimeLeft(quiz.questions[currentQuestionIndex + 1].time);
-      } else {
-        completeQuiz();
+  const handleBlankAnswer = (answers: string[]) => {
+    if (!quiz) return;
+
+    const currentQuestion = quiz.questions[currentQuestionIndex];
+    const correctAnswers = JSON.parse(currentQuestion.options as string);
+    
+    // Check if all answers match (case insensitive)
+    const isCorrect = answers.every((answer, index) => 
+      answer.trim().toLowerCase() === correctAnswers[index].text.trim().toLowerCase()
+    );
+
+    if (isCorrect) {
+      handleCorrectAnswer(currentQuestion.points);
+      setTimeout(handleNextQuestion, 1500);
+    } else {
+      handleIncorrectAnswer();
+    }
+  };
+
+  const handleIdentificationAnswer = () => {
+    if (!quiz) return;
+
+    const currentQuestion = quiz.questions[currentQuestionIndex];
+    const correctAnswers = JSON.parse(currentQuestion.options as string);
+    
+    // Check if the answer matches any of the possible correct answers
+    const isCorrect = correctAnswers.some((answer: { text: string }) => 
+      identificationAnswer.trim().toLowerCase() === answer.text.trim().toLowerCase()
+    );
+
+    if (isCorrect) {
+      handleCorrectAnswer(currentQuestion.points);
+      setTimeout(handleNextQuestion, 1500);
+    } else {
+      handleIncorrectAnswer();
+    }
+  };
+
+  const handleEnumerationAnswer = () => {
+    if (!quiz) return;
+
+    const currentQuestion = quiz.questions[currentQuestionIndex];
+    const correctAnswers = JSON.parse(currentQuestion.options as string);
+    
+    // Filter out empty answers
+    const validAnswers = enumerationAnswers.filter(answer => answer?.trim());
+    
+    if (validAnswers.length === 0) {
+      handleIncorrectAnswer();
+      return;
+    }
+
+    // Calculate partial points based on correct answers
+    let correctCount = 0;
+    const matchedAnswers = new Set(); // Track which correct answers have been matched
+
+    validAnswers.forEach(answer => {
+      const normalizedAnswer = answer.trim().toLowerCase();
+      // Find a correct answer that hasn't been matched yet
+      const matchIndex = correctAnswers.findIndex((correct: { text: string, id: number }) => 
+        !matchedAnswers.has(correct.id) && 
+        normalizedAnswer === correct.text.trim().toLowerCase()
+      );
+
+      if (matchIndex !== -1) {
+        correctCount++;
+        matchedAnswers.add(correctAnswers[matchIndex].id);
       }
-    }, 1500);
+    });
+
+    // Calculate points: 1 point per correct answer
+    const earnedPoints = correctCount;
+    
+    if (earnedPoints > 0) {
+      handleCorrectAnswer(earnedPoints);
+      if (earnedPoints < correctAnswers.length) {
+        // Show correct answers if not all were correct
+        handleIncorrectAnswer();
+      } else {
+        setTimeout(handleNextQuestion, 1500);
+      }
+    } else {
+      handleIncorrectAnswer();
+    }
+  };
+
+  // Update the Enumeration question display to show score feedback
+  const renderEnumerationFeedback = () => {
+    if (!quiz || answerStatus !== 'incorrect') return null;
+
+    const currentQuestion = quiz.questions[currentQuestionIndex];
+    const correctAnswers = JSON.parse(currentQuestion.options as string);
+    const validAnswers = enumerationAnswers.filter(answer => answer?.trim());
+    let correctCount = 0;
+    const matchedAnswers = new Set();
+
+    validAnswers.forEach(answer => {
+      const normalizedAnswer = answer.trim().toLowerCase();
+      const matchIndex = correctAnswers.findIndex((correct: { text: string, id: number }) => 
+        !matchedAnswers.has(correct.id) && 
+        normalizedAnswer === correct.text.trim().toLowerCase()
+      );
+
+      if (matchIndex !== -1) {
+        correctCount++;
+        matchedAnswers.add(correctAnswers[matchIndex].id);
+      }
+    });
+
+    return (
+      <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg w-full">
+        <div className="mb-2">
+          <Text strong className="text-green-700">
+            You got {correctCount} out of {correctAnswers.length} correct answers
+          </Text>
+        </div>
+        <div className="mb-2">
+          <Text strong className="text-green-700">Correct Answers:</Text>
+        </div>
+        {correctAnswers.map((answer: { text: string }, index: number) => (
+          <div key={index} className="text-green-600">
+            <Text>{index + 1}. {answer.text}</Text>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const handleNextQuestion = () => {
+    setShowCorrectAnswer(false);
+    setAnswerStatus(null);
+    setIdentificationAnswer('');
+    setBlankAnswers([]);
+    setEnumerationAnswers([]);
+    
+    if (currentQuestionIndex < quiz.questions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+      setTimeLeft(quiz.questions[currentQuestionIndex + 1].time);
+    } else {
+      completeQuiz();
+    }
+  };
+
+  const handleBackToMenu = () => {
+    api.window.openInTray(WindowIdentifier.Dashboard);
+    api.window.close(WindowIdentifier.QuizPlayer)
   };
 
   useEffect(() => {
@@ -170,7 +386,7 @@ function QuizPlayer() {
   if (!quiz) {
     return (
       <div className="flex items-center justify-center h-screen text-2xl bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 text-white">
-        Loading quiz... {quizId}
+        Loading quiz...
       </div>
     );
   }
@@ -223,7 +439,7 @@ function QuizPlayer() {
           </div>
           <button
             className="w-full bg-gradient-to-r from-purple-500 to-pink-600 text-white px-8 py-4 rounded-full text-xl font-semibold hover:from-purple-600 hover:to-pink-700 transition-all transform hover:scale-105"
-            onClick={() => api.window.close(WindowIdentifier.QuizPlayer)}
+            onClick={() => handleBackToMenu()}
           >
             Back to Menu
           </button>
@@ -249,53 +465,189 @@ function QuizPlayer() {
       >
         <div className="bg-white text-gray-800 p-8 rounded-lg shadow-2xl mb-8">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-3xl font-semibold">{currentQuestion.question}</h2>
+            <h2 className="text-3xl font-semibold">
+              <span className="text-purple-600 mr-2">Q{currentQuestionIndex + 1}.</span>
+              {currentQuestion.type === "Fill in the Blank" ? (
+                // Replace underscores with input fields
+                currentQuestion.question.split(/(_+)/).map((part, index) => {
+                  if (part.match(/^_+$/)) {
+                    const blankIndex = Math.floor(index / 2);
+                    return (
+                      <input
+                        key={index}
+                        type="text"
+                        className={`mx-2 px-3 py-1 border-b-2 focus:outline-none focus:border-purple-500 ${
+                          answerStatus === 'correct' ? 'border-green-500 bg-green-50' :
+                          answerStatus === 'incorrect' ? 'border-red-500 bg-red-50' :
+                          'border-gray-300'
+                        }`}
+                        style={{ width: '120px' }}
+                        value={blankAnswers[blankIndex] || ''}
+                        onChange={(e) => {
+                          const newAnswers = [...blankAnswers];
+                          newAnswers[blankIndex] = e.target.value;
+                          setBlankAnswers(newAnswers);
+                        }}
+                        disabled={answerStatus !== null}
+                      />
+                    );
+                  }
+                  return <span key={index}>{part}</span>;
+                })
+              ) : currentQuestion.type === "Identification" ? (
+                currentQuestion.question
+              ) : currentQuestion.type === "Enumeration" ? (
+                currentQuestion.question
+              ) : (
+                currentQuestion.question
+              )}
+            </h2>
             <div className="text-2xl font-bold text-purple-600">{timeLeft}s</div>
           </div>
-          <motion.div
-            className="w-full bg-gray-200 rounded-full h-4 mb-8"
-            initial={{ width: "100%" }}
-            animate={{ width: "0%" }}
-            transition={{ duration: currentQuestion.time, ease: "linear" }}
-          >
-            <div className="bg-gradient-to-r from-purple-500 to-pink-600 h-4 rounded-full" />
-          </motion.div>
-          <ul className="space-y-4">
-            <AnimatePresence>
-              {(JSON.parse(currentQuestion.options as string) as QuizOption[]).map((option, index) => {
-                const isSelected = selectedAnswers[currentQuestionIndex] === option.text;
-                const bgColor = isSelected
-                  ? answerStatus === 'correct'
-                    ? 'bg-green-500'
-                    : answerStatus === 'incorrect'
-                      ? 'bg-red-500'
-                      : 'bg-blue-500'
-                  : 'bg-gray-100 hover:bg-gray-200';
 
-                return (
-                  <motion.li
+          <div className="relative w-full h-4 bg-gray-200 rounded-full mb-8">
+            <motion.div
+              className="absolute top-0 left-0 h-full bg-gradient-to-r from-purple-500 to-pink-600 rounded-full"
+              initial={{ width: "100%" }}
+              animate={{ width: "0%" }}
+              transition={{ duration: timeLeft, ease: "linear" }}
+            />
+          </div>
+
+          {currentQuestion.type === "Fill in the Blank" ? (
+            <div className="flex justify-end mt-4">
+              <button
+                className={`bg-gradient-to-r from-purple-500 to-pink-600 text-white px-6 py-2 rounded-lg transition-opacity ${
+                  answerStatus !== null || !blankAnswers.some(answer => answer?.trim()) 
+                  ? 'opacity-50 cursor-not-allowed' 
+                  : 'hover:opacity-90'
+                }`}
+                onClick={() => handleBlankAnswer(blankAnswers)}
+                disabled={answerStatus !== null || !blankAnswers.some(answer => answer?.trim())}
+              >
+                Check Answer
+              </button>
+              {answerStatus === 'incorrect' && showCorrectAnswer && getCorrectAnswerDisplay(currentQuestion)}
+            </div>
+          ) : currentQuestion.type === "Identification" ? (
+            <div className="mt-8">
+              <input
+                type="text"
+                className={`w-full p-4 text-lg border-2 rounded-lg focus:outline-none focus:border-purple-500 transition-colors ${
+                  answerStatus === 'correct' ? 'border-green-500 bg-green-50' :
+                  answerStatus === 'incorrect' ? 'border-red-500 bg-red-50' :
+                  'border-gray-300'
+                }`}
+                placeholder="Type your answer here"
+                value={identificationAnswer}
+                onChange={(e) => setIdentificationAnswer(e.target.value)}
+                disabled={answerStatus !== null}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && identificationAnswer.trim() && !answerStatus) {
+                    handleIdentificationAnswer();
+                  }
+                }}
+              />
+              <div className="flex justify-end mt-4">
+                <button
+                  className={`bg-gradient-to-r from-purple-500 to-pink-600 text-white px-6 py-3 rounded-lg text-lg font-semibold transition-all ${
+                    answerStatus !== null || !identificationAnswer.trim() 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:opacity-90 hover:scale-105'
+                  }`}
+                  onClick={handleIdentificationAnswer}
+                  disabled={answerStatus !== null || !identificationAnswer.trim()}
+                >
+                  Submit Answer
+                </button>
+                {answerStatus === 'incorrect' && showCorrectAnswer && getCorrectAnswerDisplay(currentQuestion)}
+              </div>
+            </div>
+          ) : currentQuestion.type === "Enumeration" ? (
+            <div className="mt-8">
+              <div className="space-y-4">
+                {Array.from({ length: JSON.parse(currentQuestion.options as string).length }).map((_, index) => (
+                  <input
                     key={index}
-                    initial={{ opacity: 0, y: 50 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -50 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <button
-                      className={`p-5 w-full text-left rounded-lg transition-all transform hover:scale-105 ${bgColor} ${isSelected ? 'text-white' : ''}`}
-                      onClick={() => handleAnswerSelect(option.text)}
-                      disabled={selectedAnswers[currentQuestionIndex] !== null}
+                    type="text"
+                    className={`w-full p-4 text-lg border-2 rounded-lg focus:outline-none focus:border-purple-500 transition-colors ${
+                      answerStatus === 'correct' ? 'border-green-500 bg-green-50' :
+                      answerStatus === 'incorrect' ? 'border-red-500 bg-red-50' :
+                      'border-gray-300'
+                    }`}
+                    placeholder={`Answer ${index + 1}`}
+                    value={enumerationAnswers[index] || ''}
+                    onChange={(e) => {
+                      const newAnswers = [...enumerationAnswers];
+                      newAnswers[index] = e.target.value;
+                      setEnumerationAnswers(newAnswers);
+                    }}
+                    disabled={answerStatus !== null}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && enumerationAnswers.length === JSON.parse(currentQuestion.options as string).length) {
+                        handleEnumerationAnswer();
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="flex justify-end mt-4">
+                <button
+                  className={`bg-gradient-to-r from-purple-500 to-pink-600 text-white px-6 py-3 rounded-lg text-lg font-semibold transition-all ${
+                    answerStatus !== null || !enumerationAnswers.some(answer => answer?.trim())
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:opacity-90 hover:scale-105'
+                  }`}
+                  onClick={handleEnumerationAnswer}
+                  disabled={answerStatus !== null || !enumerationAnswers.some(answer => answer?.trim())}
+                >
+                  Submit Answers
+                </button>
+                {answerStatus === 'incorrect' && showCorrectAnswer && renderEnumerationFeedback()}
+              </div>
+            </div>
+          ) : (
+            // Modified multiple choice rendering with letters
+            <ul className="space-y-4">
+              <AnimatePresence>
+                {(JSON.parse(currentQuestion.options as string) as QuizOption[]).map((option, index) => {
+                  const isSelected = selectedAnswers[currentQuestionIndex] === option.text;
+                  const bgColor = isSelected
+                    ? answerStatus === 'correct'
+                      ? 'bg-green-500'
+                      : answerStatus === 'incorrect'
+                        ? 'bg-red-500'
+                        : 'bg-blue-500'
+                    : 'bg-gray-100 hover:bg-gray-200';
+                  const letter = String.fromCharCode(65 + index); // Convert 0 to 'A', 1 to 'B', etc.
+
+                  return (
+                    <motion.li
+                      key={index}
+                      initial={{ opacity: 0, y: 50 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -50 }}
+                      transition={{ delay: index * 0.1 }}
                     >
-                      {option.text}
-                    </button>
-                  </motion.li>
-                );
-              })}
-            </AnimatePresence>
-          </ul>
+                      <button
+                        className={`p-5 w-full text-left rounded-lg transition-all transform hover:scale-105 ${bgColor} ${isSelected ? 'text-white' : ''}`}
+                        onClick={() => handleAnswerSelect(option.text)}
+                        disabled={selectedAnswers[currentQuestionIndex] !== null}
+                      >
+                        <span className="inline-block w-8 font-semibold">{letter}.</span>
+                        {option.text}
+                      </button>
+                    </motion.li>
+                  );
+                })}
+              </AnimatePresence>
+            </ul>
+          )}
         </div>
       </motion.div>
-      <div className="text-xl font-semibold mb-4">
-        Question {currentQuestionIndex + 1} of {quiz.questions.length}
+      <div className="flex justify-between items-center text-xl font-semibold mb-4">
+        <div>Question {currentQuestionIndex + 1} of {quiz.questions.length}</div>
+        <div>Points: {currentQuestion.points}</div>
       </div>
     </motion.div>
   );

@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button, Input, Card, Collapse, Layout, Typography, Space, List, Divider, Modal, Select, Upload, Tag, Empty, message } from 'antd';
-import { LeftOutlined, SearchOutlined, PlusOutlined, SettingOutlined, EyeOutlined, ExclamationCircleOutlined, CheckCircleOutlined, MinusCircleOutlined, EditOutlined, DeleteOutlined, CopyOutlined, InboxOutlined } from '@ant-design/icons';
+import { LeftOutlined, SearchOutlined, PlusOutlined, SettingOutlined, EyeOutlined, ExclamationCircleOutlined, CheckCircleOutlined, MinusCircleOutlined, EditOutlined, DeleteOutlined, CopyOutlined, InboxOutlined, MenuOutlined, CheckOutlined } from '@ant-design/icons';
 import { Quiz, QuizQuestion } from '@prisma/client';
 import { questionTypes, QuestionType } from '@/renderer/types/quiz';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 
 const { Header, Content, Sider } = Layout;
 const { Text } = Typography;
@@ -24,13 +25,19 @@ const QuizManager: React.FC = () => {
   const [searchQuestionTerm, setSearchQuestionTerm] = useState('');
   const [importModalVisible, setImportModalVisible] = useState(false);
   const [importType, setImportType] = useState<'googleForms' | 'spreadsheet' | null>(null);
+  const [reorderMode, setReorderMode] = useState(false);
 
   useEffect(() => {
     const fetchQuiz = async () => {
       if (quizId) {
         const fetchedQuiz = await api.database.getQuizById(quizId);
-        setQuiz(fetchedQuiz[0]);
-        setQuizSettings(fetchedQuiz[0]);
+        // Sort questions by order when setting the quiz
+        const sortedQuestions = {
+          ...fetchedQuiz[0],
+          questions: fetchedQuiz[0].questions.sort((a, b) => a.order - b.order)
+        };
+        setQuiz(sortedQuestions);
+        setQuizSettings(sortedQuestions);
       }
     };
     fetchQuiz();
@@ -261,6 +268,172 @@ const QuizManager: React.FC = () => {
     }
   };
 
+  const renderQuestionPreview = (q: QuizQuestion) => {
+    if (q.type === "Identification") {
+      const answers = JSON.parse(q.options as string);
+      return (
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Text strong>{q.question}</Text>
+          <Divider orientation="left">Accepted Answers</Divider>
+          <List
+            dataSource={answers}
+            renderItem={(answer: { text: string }) => (
+              <List.Item>
+                <Space>
+                  <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                  <Text>{answer.text}</Text>
+                </Space>
+              </List.Item>
+            )}
+          />
+        </Space>
+      );
+    }
+    if (q.type === "Fill in the Blank") {
+      const questionWithBlanks = q.question.replace(/_+/g, '______');
+      const answers = JSON.parse(q.options as string);
+      return (
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Text strong>{questionWithBlanks}</Text>
+          <Divider orientation="left">Answers</Divider>
+          <List
+            dataSource={answers}
+            renderItem={(answer: { text: string }, index: number) => (
+              <List.Item>
+                <Space>
+                  <Tag color="blue">Blank {index + 1}</Tag>
+                  <Text>{answer.text}</Text>
+                </Space>
+              </List.Item>
+            )}
+          />
+        </Space>
+      );
+    }
+    
+    return (
+      <Space direction="vertical" style={{ width: '100%' }}>
+        <Text strong>{q.question}</Text>
+        <Divider orientation="left">Options</Divider>
+        <List
+          dataSource={JSON.parse(q.options as string)}
+          renderItem={(option: { text: string; isCorrect: boolean }) => (
+            <List.Item>
+              <Space>
+                {option.isCorrect ?
+                  <CheckCircleOutlined style={{ color: '#52c41a' }} /> :
+                  <MinusCircleOutlined style={{ color: '#ff4d4f' }} />
+                }
+                <Text>{option.text}</Text>
+              </Space>
+            </List.Item>
+          )}
+        />
+      </Space>
+    );
+  };
+
+  const handleDragEnd = async (result: any) => {
+    if (!result.destination || !quiz) return;
+  
+    const items = Array.from(quiz.questions);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+  
+    // Pre-update local state with optimistic update
+    const updatedItems = items.map((item, index) => ({
+      ...item,
+      order: index
+    }));
+  
+    setQuiz(prev => prev ? { ...prev, questions: updatedItems } : null);
+  
+    try {
+      // Save the new order to the database
+      const updatedQuiz = await api.database.updateQuizQuestionsOrder(
+        quizId,
+        updatedItems.map(item => ({
+          id: item.id,
+          order: item.order
+        }))
+      );
+  
+      if (updatedQuiz) {
+        message.success('Question order updated');
+        // Update local state with server response to ensure consistency
+        setQuiz(updatedQuiz);
+      }
+    } catch (error) {
+      message.error('Failed to update question order');
+      console.error('Error updating question order:', error);
+      // Revert to original order on error
+      setQuiz(prev => prev ? { ...prev, questions: items } : null);
+    }
+  };
+  
+  const renderQuestionList = () => (
+    <DragDropContext onDragEnd={handleDragEnd}>
+      <Droppable droppableId="questions">
+        {(provided) => (
+          <div {...provided.droppableProps} ref={provided.innerRef}>
+            <List
+              itemLayout="vertical"
+              dataSource={[...filteredQuestions].sort((a, b) => a.order - b.order)}
+              renderItem={(q, index) => (
+                <Draggable
+                  key={q.id}
+                  draggableId={q.id}
+                  index={index}
+                  isDragDisabled={!reorderMode}
+                >
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.draggableProps}
+                      style={{
+                        ...provided.draggableProps.style,
+                        marginBottom: '16px'
+                      }}
+                    >
+                      <Card
+                        style={{
+                          marginBottom: 0,
+                          cursor: reorderMode ? 'grab' : 'default',
+                          background: snapshot.isDragging ? '#fafafa' : '#fff'
+                        }}
+                        extra={reorderMode && (
+                          <div {...provided.dragHandleProps}>
+                            ⋮⋮
+                          </div>
+                        )}
+                        actions={[
+                          <Button key="edit" icon={<EditOutlined />} onClick={() => handleEditQuestion(q)}>Edit</Button>,
+                          <Button key="delete" icon={<DeleteOutlined />} danger onClick={() => handleDeleteQuestion(q.id)}>Delete</Button>
+                        ]}
+                      >
+                        <Card.Meta
+                          title={
+                            <Space>
+                              <Tag color="blue">{q.type}</Tag>
+                              <Text type="secondary">{q.time} seconds • {q.points} point{q.points !== 1 && 's'}</Text>
+                            </Space>
+                          }
+                          description={renderQuestionPreview(q)}
+                        />
+                      </Card>
+                    </div>
+                  )}
+                </Draggable>
+              )}
+            >
+              {provided.placeholder}
+            </List>
+          </div>
+        )}
+      </Droppable>
+    </DragDropContext>
+  );
+
   return (
     <>
       <Layout style={{ minHeight: '100vh' }}>
@@ -274,6 +447,12 @@ const QuizManager: React.FC = () => {
               </Text>
             </Space>
             <Space>
+              <Button
+                icon={reorderMode ? <CheckOutlined /> : <MenuOutlined />}
+                onClick={() => setReorderMode(!reorderMode)}
+              >
+                {reorderMode ? 'Done Reordering' : 'Reorder Questions'}
+              </Button>
               <Button icon={<SettingOutlined />} onClick={showSettings}>Settings</Button>
               <Button icon={<EyeOutlined />} disabled={!quiz?.questions || quiz.questions.length === 0}>Preview</Button>
               {quiz?.published && !isDraft ? (
@@ -324,59 +503,7 @@ const QuizManager: React.FC = () => {
                   </Space>
                 </Card>
                 {filteredQuestions.length > 0 ? (
-                  <List
-                    itemLayout="vertical"
-                    dataSource={filteredQuestions}
-                    renderItem={q => (
-                      <Card
-                        key={q.id}
-                        style={{ marginBottom: 16 }}
-                        actions={[
-                          <Button key="edit" icon={<EditOutlined />} onClick={() => handleEditQuestion(q)}>Edit</Button>,
-                          <Button key="delete" icon={<DeleteOutlined />} danger onClick={() => handleDeleteQuestion(q.id)}>Delete</Button>
-                        ]}
-                      >
-                        <Card.Meta
-                          title={
-                            <Space>
-                              <Tag color="blue">{q.type}</Tag>
-                              <Text type="secondary">{q.time} seconds • {q.points} point{q.points !== 1 && 's'}</Text>
-                            </Space>
-                          }
-                          description={
-                            <Space direction="vertical" style={{ width: '100%' }}>
-                              <Text strong>{q.question}</Text>
-                              <Divider orientation="left">Options</Divider>
-                              <List
-                                dataSource={JSON.parse(q.options as string)}
-                                renderItem={(option: { text: string; isCorrect: boolean }) => (
-                                  <List.Item>
-                                    <Space>
-                                      {option.isCorrect ?
-                                        <CheckCircleOutlined style={{ color: '#52c41a' }} /> :
-                                        <MinusCircleOutlined style={{ color: '#ff4d4f' }} />
-                                      }
-                                      <Text>{option.text}</Text>
-                                    </Space>
-                                  </List.Item>
-                                )}
-                              />
-                            </Space>
-                          }
-                        />
-                      </Card>
-                    )}
-                    footer={
-                      <Button
-                        type="dashed"
-                        onClick={handleAddQuestion}
-                        icon={<PlusOutlined />}
-                        style={{ width: '100%' }}
-                      >
-                        Add question
-                      </Button>
-                    }
-                  />
+                  renderQuestionList()
                 ) : (
                   <Card>
                     <Empty

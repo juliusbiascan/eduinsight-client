@@ -20,6 +20,8 @@ function getTimeStamp() {
   return dateTime;
 }
 
+let monitoringInterval: NodeJS.Timeout;
+
 /**
  * Sets up activity logging for a specific user, device, and lab.
  * This function initializes activity logging and power state monitoring.
@@ -29,6 +31,7 @@ function getTimeStamp() {
  */
 export async function startMonitoring(userId: string, deviceId: string, labId: string) {
   console.log("Starting monitoring for:", { userId, deviceId, labId });
+  setPowerMonitor(userId, deviceId, labId);
 
   const socket = getSocketInstance();
   console.log("Socket instance:", socket ? "obtained" : "not available");
@@ -41,7 +44,7 @@ export async function startMonitoring(userId: string, deviceId: string, labId: s
   const activityManager = new ActivityManager();
   console.log("Activity manager initialized");
 
-  setInterval(async () => {
+  monitoringInterval = setInterval(async () => {
     try {
       console.log("Attempting to get active window");
       const result = await activeWindow();
@@ -88,7 +91,7 @@ export async function startMonitoring(userId: string, deviceId: string, labId: s
  * @returns {Promise<void>}
  */
 async function pushPowerLogsToDB(pm_status: string, pm_log_ts: string, userId: string, deviceId: string, labId: string) {
-  console.log("Pushing power logs to DB:", { pm_status, pm_log_ts, userId, deviceId, labId });
+  
   try {
     await Database.prisma.powerMonitoringLogs.create({
       data: {
@@ -100,6 +103,13 @@ async function pushPowerLogsToDB(pm_status: string, pm_log_ts: string, userId: s
       }
     });
     console.log("Power log pushed successfully");
+    
+    // Emit 'power-monitoring-update' event
+    const socket = getSocketInstance();
+    if (socket && isSocketConnected()) {
+      socket.emit("power-monitoring-update", { deviceId });
+      console.log("Emitted 'power-monitoring-update' event");
+    }
   } catch (error) {
     console.error("Error pushing power log to DB:", error);
   }
@@ -158,7 +168,12 @@ export function setPowerMonitor(userId: string, deviceId: string, labId: string)
  * This function clears the interval and removes all power monitor event listeners.
  */
 export const stopPowerMonitoring = (): void => {
-  console.log("Stopping power monitoring");
+  console.log("Stopping monitoring");
+  if (monitoringInterval) {
+    clearInterval(monitoringInterval);
+    console.log("Monitoring interval cleared");
+  }
+
   powerMonitor.removeAllListeners("suspend");
   powerMonitor.removeAllListeners("resume");
   powerMonitor.removeAllListeners("on-ac");

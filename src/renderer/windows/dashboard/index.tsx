@@ -11,6 +11,7 @@ import { WindowIdentifier } from "@/shared/constants";
 import { StudentView } from "./routes/student-view";
 import { TeacherView } from "./routes/teacher-view";
 import StudentProgressReport from "./routes/analytics/student-progress";
+import StudentQuizResults from "./routes/results/quiz-results";
 
 
 function Index() {
@@ -87,6 +88,7 @@ function Index() {
         <Route path="student" element={<StudentView user={user} handleLogout={handleLogout} />} />
         <Route path="teacher" element={<TeacherView user={user} recentLogin={recentLogin} handleLogout={handleLogout} />} />
         <Route path="analytics/student-progress/:id" element={<StudentProgressReport />} />
+        <Route path="results/quiz-results/:id" element={<StudentQuizResults />} />
       </Route>
     </Routes>
     <Toaster />

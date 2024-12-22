@@ -23,7 +23,15 @@ const DatabaseSetup: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const form = useForm<DatabaseFormData>();
+  const form = useForm<DatabaseFormData>({
+    defaultValues: {
+      hostname: '192.168.102.145',
+      port: '3306',
+      username: 'eduinsight_user',
+      password: 'eduinsight_pass',
+      databaseName: 'eduinsight',
+    }
+  });
 
   useEffect(() => {
     api.window.receive('error', (event, error) => {
@@ -101,23 +109,23 @@ const DatabaseSetup: React.FC = () => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.5 }}
+      className="space-y-6"
     >
-      <div className="text-center space-y-4 pb-8">
+      <div className="text-center space-y-2">
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ type: "spring", stiffness: 260, damping: 20 }}
         >
-          <FiDatabase className="text-6xl mx-auto text-blue-500" />
+          <FiDatabase className="text-5xl mx-auto text-[#C9121F]" />
         </motion.div>
-        <h2 className="text-2xl font-bold text-blue-600">Database Setup</h2>
-        <p className="text-sm text-gray-600">Configure your database connection</p>
+        <h2 className="text-2xl font-bold text-gray-900">Database Setup</h2>
+        <p className="text-gray-500">Configure your database connection</p>
       </div>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <FormField
               control={form.control}
               name="hostname"
@@ -192,13 +200,21 @@ const DatabaseSetup: React.FC = () => {
               </FormItem>
             )}
           />
-          {error && <p className="text-red-500 text-sm">{error}</p>}
-          <Button type="submit" className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white" disabled={isConnecting || isConnected}>
+          {error && (
+            <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm">
+              {error}
+            </div>
+          )}
+          <Button 
+            type="submit" 
+            className="w-full bg-gradient-to-r from-[#C9121F] to-[#EBC42E] hover:opacity-90 transition-opacity text-white"
+            disabled={isConnecting || isConnected}
+          >
             {isConnected ? (
-              <>
+              <span className="flex items-center">
                 <CheckCircle className="mr-2 h-4 w-4" />
                 Connected
-              </>
+              </span>
             ) : isConnecting ? (
               'Connecting...'
             ) : (

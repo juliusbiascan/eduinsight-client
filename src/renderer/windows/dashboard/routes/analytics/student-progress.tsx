@@ -15,8 +15,9 @@ import { ChevronLeft, GraduationCap, BookOpen, Trophy, Download } from "lucide-r
 import { useState, useEffect } from "react";
 import { toast } from "@/renderer/hooks/use-toast";
 import * as XLSX from 'xlsx';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/renderer/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/renderer/components/ui/tabs";
+import { Dialog, DialogTrigger } from "@/renderer/components/ui/dialog";
+import { AssessmentDialog } from "./assessment-dialog";
+import { Activity, ActivityRecord, Quiz, QuizQuestion, QuizRecord, Subject } from "@prisma/client";
 
 // Types based on Prisma schema
 interface QuizDetail {
@@ -70,297 +71,39 @@ interface StudentProgress {
   overallProgress: number;
 }
 
-interface AssessmentDialogProps {
-  student: StudentProgress;
+interface ExtendedQuizRecord {
+  quizId: string;
+  quiz: {
+    id: string;
+    title: string;
+    questions: Array<{
+      id: string;
+      question: string;
+    }>;
+  };
+  score: number;
+  totalQuestions: number;
+  completedAt: Date;
 }
 
-const AssessmentDialog = ({ student }: AssessmentDialogProps) => {
-  const getProgressColor = (progress: number) => {
-    if (progress >= 90) return "text-green-600";
-    if (progress >= 75) return "text-blue-600";
-    return "text-amber-600";
+interface ExtendedActivityRecord {
+  activityId: string;
+  activity: {
+    id: string;
+    name: string;
+    description: string;
   };
+  completed: boolean;
+  completedAt: Date;
+}
 
-  return (
-    <DialogContent className="max-w-4xl">
-      <DialogHeader>
-        <DialogTitle>Student Assessment - {student.studentName}</DialogTitle>
-      </DialogHeader>
-
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="quizzes">Quizzes</TabsTrigger>
-          <TabsTrigger value="activities">Activities</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview">
-          <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Overall Progress</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{student.overallProgress}%</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Quiz Average</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{student.quizzes.averageScore}%</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Activity Completion</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{student.activities.completionRate}%</div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Assessment Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Assessment Type</TableHead>
-                      <TableHead>Completed</TableHead>
-                      <TableHead>Pending</TableHead>
-                      <TableHead>Average Score</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="font-medium">Quizzes</TableCell>
-                      <TableCell>{student.quizzes.completed}</TableCell>
-                      <TableCell>{student.quizzes.totalQuestions - student.quizzes.completed}</TableCell>
-                      <TableCell>
-                        <span className={getProgressColor(student.quizzes.averageScore)}>
-                          {student.quizzes.averageScore}%
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={student.quizzes.averageScore >= 90 ? "secondary" :
-                          student.quizzes.averageScore >= 75 ? "default" : "destructive"}>
-                          {student.quizzes.averageScore >= 90 ? "Excellent" :
-                            student.quizzes.averageScore >= 75 ? "Good" : "Needs Improvement"}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Activities</TableCell>
-                      <TableCell>{student.activities.completed}</TableCell>
-                      <TableCell>{student.activities.totalActivities - student.activities.completed}</TableCell>
-                      <TableCell>
-                        <span className={getProgressColor(student.activities.completionRate)}>
-                          {student.activities.completionRate}%
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={student.activities.completionRate >= 90 ? "secondary" :
-                          student.activities.completionRate >= 75 ? "default" : "destructive"}>
-                          {student.activities.completionRate >= 90 ? "Excellent" :
-                            student.activities.completionRate >= 75 ? "Good" : "Needs Improvement"}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="quizzes">
-          <Card>
-            <CardHeader>
-              <CardTitle>Quiz Performance Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <h4 className="text-sm font-medium">Completed Quizzes</h4>
-                    <p className="text-2xl font-bold">{student.quizzes.completed}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium">Total Questions</h4>
-                    <p className="text-2xl font-bold">{student.quizzes.totalQuestions}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium">Average Score</h4>
-                    <p className="text-2xl font-bold text-blue-600">{student.quizzes.averageScore}%</p>
-                  </div>
-                </div>
-
-                <div className="border rounded-lg">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Quiz Name</TableHead>
-                        <TableHead>Questions</TableHead>
-                        <TableHead>Score</TableHead>
-                        <TableHead>Completion Date</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {[
-                        ...student.quizzes.details.map(quiz => ({
-                          ...quiz,
-                          isPending: false
-                        })),
-                        ...student.quizzes.pending.map(quiz => ({
-                          ...quiz,
-                          isPending: true,
-                          score: 0,
-                          completedAt: null as Date | null
-                        }))
-                      ].map((quiz) => (
-                        <TableRow key={quiz.id} className={quiz.isPending ? "bg-orange-50" : undefined}>
-                          <TableCell className="font-medium">{quiz.title}</TableCell>
-                          <TableCell>{quiz.totalQuestions}</TableCell>
-                          <TableCell>
-                            {!quiz.isPending ? (
-                              <span className={getProgressColor(quiz.score)}>
-                                {quiz.score}%
-                              </span>
-                            ) : (
-                              <span className="text-orange-600">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {quiz.completedAt ?
-                              new Date(quiz.completedAt).toLocaleDateString() :
-                              <span className="text-orange-600">Not attempted</span>
-                            }
-                          </TableCell>
-                          <TableCell>
-                            {quiz.isPending ? (
-                              <Badge variant="outline" className="text-orange-600 border-orange-600">
-                                Pending
-                              </Badge>
-                            ) : (
-                              <Badge
-                                variant={quiz.score >= 90 ? "secondary" :
-                                  quiz.score >= 75 ? "default" : "destructive"}
-                              >
-                                {quiz.score >= 90 ? "Excellent" :
-                                  quiz.score >= 75 ? "Good" : "Needs Improvement"}
-                              </Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="activities">
-          <Card>
-            <CardHeader>
-              <CardTitle>Activity Performance Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="text-sm font-medium">Completed Activities</h4>
-                    <p className="text-2xl font-bold">{student.activities.completed}/{student.activities.totalActivities}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium">Completion Rate</h4>
-                    <p className="text-2xl font-bold text-green-600">{student.activities.completionRate}%</p>
-                  </div>
-                </div>
-
-                <div className="border rounded-lg">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Activity Name</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Completed Date</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {student.activities.details.map((activity) => (
-                        <TableRow key={activity.id}>
-                          <TableCell className="font-medium">{activity.name}</TableCell>
-                          <TableCell className="max-w-[200px] truncate">
-                            {activity.description}
-                          </TableCell>
-                          <TableCell>
-                            {new Date(activity.completedAt).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={activity.status ? "secondary" : "destructive"}
-                            >
-                              {activity.status ? "Completed" : "Incomplete"}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                {student.activities.pending.length > 0 && (
-                  <div className="border rounded-lg mt-6">
-                    <CardHeader>
-                      <CardTitle className="text-sm text-orange-600">Pending Activities</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Activity Name</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Status</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {student.activities.pending.map((activity) => (
-                            <TableRow key={activity.id}>
-                              <TableCell className="font-medium">{activity.name}</TableCell>
-                              <TableCell className="max-w-[200px] truncate">
-                                {activity.description}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className="text-orange-600 border-orange-600">
-                                  Pending
-                                </Badge>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </DialogContent>
-  );
-};
+// Add interface for the extended Subject type that includes relations
+interface ExtendedSubject extends Subject {
+  quizzes: Array<Quiz & { questions: QuizQuestion[] }>;
+  activities: Activity[];
+  quizRecord: QuizRecord[];
+  activityRecord: ActivityRecord[];
+}
 
 const StudentProgressReport = () => {
   const { id } = useParams<{ id: string }>();
@@ -376,52 +119,71 @@ const StudentProgressReport = () => {
 
       const progressData = await Promise.all(records.map(async record => {
         const user = await api.database.getDeviceUserById(record.userId);
-        const data = await api.database.getStudentSubjects(user.id);
-        const subject = data.find(s => s.id.toString() === id);
+        const subjectData = await api.database.getSubjectData(id);
+        const subject = subjectData[0] as ExtendedSubject; // Cast to ExtendedSubject
 
-        const userQuizRecords = subject.quizRecord.filter(record => record.userId === user.id);
-        const completedQuizzes = userQuizRecords.length;
-        const totalQuizzes = subject.quizzes.filter(quiz => quiz.published).length;
-        const completedActivities = subject.activityRecord.filter(activity => activity.completed && activity.userId === user.id).length;
-        const totalActivities = subject.activities.length;
+        if (!subject) throw new Error('Subject not found');
 
-        const totalQuestions = userQuizRecords.reduce((sum, record) => sum + record.totalQuestions, 0);
-        const averageScore = userQuizRecords.length > 0
-          ? (userQuizRecords.reduce((sum, record) => sum + record.score, 0) / userQuizRecords.length)
+        // Get all quiz and activity records with proper filtering and type casting
+        const quizRecords = (await api.database.getQuizRecordsByUserAndSubject(record.userId, id)) as ExtendedQuizRecord[];
+        const activityRecords = (await api.database.getActivityRecordsByUserAndSubject(record.userId, id)) as ExtendedActivityRecord[];
+
+        const publishedQuizzes = subject.quizzes?.filter(quiz => quiz.published) || [];
+        const publishedActivities = subject.activities?.filter(activity => activity.published) || [];
+
+        // Calculate statistics with null checks
+        const completedQuizzes = quizRecords?.length || 0;
+        const totalQuestions = quizRecords?.reduce((sum, record) => sum + record.totalQuestions, 0) || 0;
+        const averageScore = completedQuizzes > 0
+          ? (quizRecords.reduce((sum, record) => sum + record.score, 0) / completedQuizzes)
           : 0;
 
-        const quizProgress = totalQuizzes > 0 ? (completedQuizzes / totalQuizzes) * 100 : 0;
-        const activityProgress = totalActivities > 0 ? (completedActivities / totalActivities) * 100 : 0;
+        const completedActivities = activityRecords?.filter(record => record.completed)?.length || 0;
 
-        const overallProgress = totalActivities === 0 ? quizProgress : (quizProgress + activityProgress) / 2;
+        // Calculate progress with null checks
+        const quizProgress = publishedQuizzes.length > 0 
+          ? (completedQuizzes / publishedQuizzes.length) * 100 
+          : 0;
+        const activityProgress = publishedActivities.length > 0 
+          ? (completedActivities / publishedActivities.length) * 100 
+          : 0;
 
-        const quizDetails = userQuizRecords.map(record => ({
+        // Calculate overall progress with weighted average
+        const totalItems = publishedQuizzes.length + publishedActivities.length;
+        const overallProgress = totalItems === 0 ? 0 : (
+          (quizProgress * publishedQuizzes.length + activityProgress * publishedActivities.length) / totalItems
+        );
+
+        // Prepare quiz details with proper type checking
+        const quizDetails = quizRecords?.map(record => ({
           id: record.quizId,
-          title: subject.quizzes.find(q => q.id === record.quizId)?.title || 'Unknown Quiz',
+          title: record.quiz?.title || 'Unknown Quiz',
           totalQuestions: record.totalQuestions,
           score: record.score,
           completedAt: record.completedAt
-        }));
+        })) || [];
 
-        const activityDetails = subject.activityRecord.map(record => ({
+        // Prepare activity details with proper type checking
+        const activityDetails = activityRecords?.map(record => ({
           id: record.activityId,
-          name: subject.activities.find(a => a.id === record.activityId)?.name || 'Unknown Activity',
-          description: subject.activities.find(a => a.id === record.activityId)?.description || '',
+          name: record.activity?.name || 'Unknown Activity',
+          description: record.activity?.description || '',
           completedAt: record.completedAt,
           status: record.completed
-        }));
+        })) || [];
 
-        const pendingQuizzes = subject.quizzes
-          .filter(quiz => quiz.published && !userQuizRecords.some(r => r.quizId === quiz.id))
-          .map(quiz => ({
+        // Get pending items with proper type checking
+        const pendingQuizzes = publishedQuizzes
+          .filter((quiz: { id: string; }) => !quizRecords?.some(r => r.quizId === quiz.id))
+          .map((quiz: { id: any; title: any; questions: string | any[]; }) => ({
             id: quiz.id,
             title: quiz.title,
-            totalQuestions: 0,
+            totalQuestions: quiz.questions?.length || 0,
           }));
 
-        const pendingActivities = subject.activities
-          .filter(activity => activity.published && !subject.activityRecord.some(r => r.activityId === activity.id && r.userId === user.id))
-          .map(activity => ({
+        const pendingActivities = publishedActivities
+          .filter((activity: { id: string; }) => !activityRecords?.some(r => r.activityId === activity.id))
+          .map((activity: { id: any; name: any; description: any; }) => ({
             id: activity.id,
             name: activity.name,
             description: activity.description,
@@ -432,24 +194,26 @@ const StudentProgressReport = () => {
           studentName: `${user.firstName} ${user.lastName}`,
           quizzes: {
             completed: completedQuizzes,
+            total: publishedQuizzes.length,
             averageScore: Math.round(averageScore * 100) / 100,
-            totalQuestions: totalQuestions,
-            details: quizDetails, // Add this new property
+            totalQuestions,
+            details: quizDetails,
             pending: pendingQuizzes,
           },
           activities: {
             completed: completedActivities,
-            totalActivities: totalActivities,
+            totalActivities: publishedActivities.length,
             completionRate: Math.round(activityProgress * 100) / 100,
             details: activityDetails,
             pending: pendingActivities,
           },
-          overallProgress: Math.round(overallProgress)
+          overallProgress: Math.round(overallProgress * 100) / 100
         };
       }));
 
       setProgressData(progressData);
     } catch (error) {
+      console.error('Error fetching progress data:', error);
       toast({
         title: "Error",
         description: "Failed to load progress data",
@@ -472,25 +236,72 @@ const StudentProgressReport = () => {
 
   const handleExportToExcel = () => {
     try {
-      // Prepare data for export
-      const exportData = progressData.map(student => ({
+      // Prepare detailed quiz data for export
+      const exportData = progressData.flatMap(student => {
+        // Export all quiz details for the student
+        const quizDetails = student.quizzes.details.map(quiz => ({
+          'Student Name': student.studentName,
+          'Quiz Title': quiz.title,
+          'Total Questions': quiz.totalQuestions,
+          'Score': quiz.score,
+          'Percentage': `${(quiz.score / quiz.totalQuestions * 100).toFixed(1)}%`,
+          'Completion Date': new Date(quiz.completedAt).toLocaleDateString(),
+          'Status': quiz.score >= 90 ? 'Excellent' :
+            quiz.score >= 75 ? 'Good' : 'Needs Improvement'
+        }));
+
+        // Export pending quizzes
+        const pendingQuizzes = student.quizzes.pending.map(quiz => ({
+          'Student Name': student.studentName,
+          'Quiz Title': quiz.title,
+          'Total Questions': quiz.totalQuestions,
+          'Score': 'N/A',
+          'Percentage': 'N/A',
+          'Completion Date': 'Not attempted',
+          'Status': 'Pending'
+        }));
+
+        return [...quizDetails, ...pendingQuizzes];
+      });
+
+      // Create workbook with multiple sheets
+      const wb = XLSX.utils.book_new();
+
+      // Add summary sheet
+      const summaryData = progressData.map(student => ({
         'Student Name': student.studentName,
         'Quiz Average': `${student.quizzes.averageScore}%`,
-        'Quizzes Completed': student.quizzes.completed,
-        'Activities Completion Rate': `${student.activities.completionRate}%`,
-        'Activities Completed': `${student.activities.completed}/${student.activities.totalActivities}`,
+        'Quizzes Completed': `${student.quizzes.completed}/${student.quizzes.completed + student.quizzes.pending.length}`,
+        'Activities Completion': `${student.activities.completionRate}%`,
+        'Activities Status': `${student.activities.completed}/${student.activities.totalActivities}`,
         'Overall Progress': `${student.overallProgress}%`,
-        'Status': student.overallProgress >= 90 ? 'Excellent' :
+        'Overall Status': student.overallProgress >= 90 ? 'Excellent' :
           student.overallProgress >= 75 ? 'Good' : 'Needs Improvement'
       }));
 
-      // Create worksheet
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Student Progress');
+      const summaryWs = XLSX.utils.json_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+
+      // Add detailed quiz records sheet
+      const detailsWs = XLSX.utils.json_to_sheet(exportData);
+      XLSX.utils.book_append_sheet(wb, detailsWs, 'Quiz Details');
+
+      // Set column widths for better readability
+      const wscols = [
+        { wch: 20 }, // Student Name
+        { wch: 30 }, // Quiz Title
+        { wch: 15 }, // Total Questions
+        { wch: 10 }, // Score
+        { wch: 12 }, // Percentage
+        { wch: 15 }, // Completion Date
+        { wch: 15 }, // Status
+      ];
+
+      detailsWs['!cols'] = wscols;
+      summaryWs['!cols'] = wscols;
 
       // Generate filename with current date
-      const fileName = `student_progress_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const fileName = `student_progress_report_${new Date().toISOString().split('T')[0]}.xlsx`;
 
       // Save file
       XLSX.writeFile(wb, fileName);
@@ -501,6 +312,7 @@ const StudentProgressReport = () => {
         variant: "default",
       });
     } catch (error) {
+      console.error('Export error:', error);
       toast({
         title: "Error",
         description: "Failed to export progress report",

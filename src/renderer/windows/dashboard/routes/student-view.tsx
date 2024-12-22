@@ -1,7 +1,7 @@
 import logo from "@/renderer/assets/passlogo-small.png";
 import { Activity, ActivityRecord, DeviceUser, Quiz, QuizRecord, Subject } from "@prisma/client";
 import { useToast } from "../../../hooks/use-toast";
-import { LogOut, RefreshCw, Book, ChevronDown, PlusCircle } from "lucide-react";
+import { LogOut, RefreshCw, Book, ChevronDown, PlusCircle , Clock } from "lucide-react";
 import { Toaster } from "../../../components/ui/toaster";
 import { useState, useEffect } from 'react';
 import { Button } from '../../../components/ui/button';
@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/renderer/components/
 import { Avatar, AvatarFallback, AvatarImage } from "@/renderer/components/ui/avatar"
 import { Badge } from "../../../components/ui/badge";
 import { Progress } from "@/renderer/components/ui/progress";
+import { useNavigate } from "react-router-dom";
 
 
 interface StudentViewProps {
@@ -24,6 +25,7 @@ export const StudentView: React.FC<StudentViewProps> = ({
   user,
   handleLogout,
 }) => {
+  const navigate = useNavigate();
   const { toast } = useToast()
   const [subjectCode, setSubjectCode] = useState('');
   const [subjects, setSubjects] = useState<(Subject & { quizzes: Quiz[], activities: Activity[], quizRecord: QuizRecord[], activityRecord: ActivityRecord[] })[]>([]);
@@ -81,6 +83,7 @@ export const StudentView: React.FC<StudentViewProps> = ({
       toast({ title: "Error", description: "Failed to join subject", variant: "destructive" });
     } finally {
       setIsJoining(false);
+      setIsJoinDialogOpen(false);
     }
   };
 
@@ -143,10 +146,14 @@ export const StudentView: React.FC<StudentViewProps> = ({
     toast({ title: "Refreshed", description: "Page content has been updated." });
   };
 
+  const handleViewQuizResults = (subjectId: string) => {
+    navigate(`/results/quiz-results/${subjectId}`);
+  };
+
   return (
     <div className="flex flex-col h-screen bg-[#EAEAEB]">
       {/* Header */}
-      <header className="bg-[#C9121F] text-white p-4 flex justify-between items-center shadow-lg">
+      <header className="bg-[#C9121F] text-white p-4 flex justify-between items-center shadow-lg sticky top-0 z-50">
         <div className="flex items-center">
           <img src={logo} alt="PASS College Logo" className="h-10 w-auto mr-2 rounded-full border-2 border-[#EBC42E]" />
           <h1 className="text-2xl font-bold">Student's Dashboard</h1>
@@ -180,7 +187,7 @@ export const StudentView: React.FC<StudentViewProps> = ({
                   <p className="font-medium">{user.schoolId}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Grade:</p>
+                  <p className="text-sm text-gray-600">Course :</p>
                   <p className="font-medium">{user.course}</p>
                 </div>
                 <div>
@@ -201,7 +208,7 @@ export const StudentView: React.FC<StudentViewProps> = ({
       </header>
 
       {/* Main content */}
-      <main className="flex-grow p-4 overflow-y-auto">
+      <main className="flex-grow p-4 overflow-y-auto relative no-scrollbar">
         {/* Subject Selection */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border-l-4 border-[#C9121F]">
           <h2 className="text-xl font-bold mb-4 text-[#1A1617] flex items-center">
@@ -334,45 +341,56 @@ export const StudentView: React.FC<StudentViewProps> = ({
             <CardContent>
               {subjects.length > 0 ? (
                 selectedSubject ? (
-                  selectedSubject.quizzes.filter(quiz => quiz.published).length > 0 ? (
-                    <ul className="space-y-4">
-                      {selectedSubject.quizzes
-                        .filter(quiz => quiz.published)
-                        .map((quiz) => {
-                          const quizRecord = selectedSubject.quizRecord.find(record => record.quizId === quiz.id && record.userId === user.id);
-                          const isQuizDone = !!quizRecord;
-                          const score = quizRecord ? (quizRecord.score / quizRecord.totalQuestions) * 100 : 0;
-                          return (
-                            <li key={quiz.id} className="bg-gray-50 rounded-lg p-3 shadow-sm">
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="font-semibold">{quiz.title}</span>
-                                <Badge variant={isQuizDone ? "secondary" : "destructive"}>
-                                  {isQuizDone ? "Done" : "Not Done"}
-                                </Badge>
-                              </div>
-                              {isQuizDone && (
-                                <div className="flex justify-between items-center">
-                                  <span className="text-sm text-gray-600">Score:</span>
-                                  <span className="text-sm font-semibold">{quizRecord.score}/{quizRecord.totalQuestions}</span>
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mb-4 w-full flex items-center justify-center"
+                      onClick={() => handleViewQuizResults(selectedSubject.id)}
+                    >
+                      <Clock className="h-4 w-4 mr-2" />
+                      View Quiz Results
+                    </Button>
+                    {selectedSubject.quizzes.filter(quiz => quiz.published).length > 0 ? (
+                      <ul className="space-y-4">
+                        {selectedSubject.quizzes
+                          .filter(quiz => quiz.published)
+                          .map((quiz) => {
+                            const quizRecord = selectedSubject.quizRecord.find(record => record.quizId === quiz.id && record.userId === user.id);
+                            const isQuizDone = !!quizRecord;
+                            const score = quizRecord ? (quizRecord.score / quizRecord.totalQuestions) * 100 : 0;
+                            return (
+                              <li key={quiz.id} className="bg-gray-50 rounded-lg p-3 shadow-sm">
+                                <div className="flex justify-between items-center mb-2">
+                                  <span className="font-semibold">{quiz.title}</span>
+                                  <Badge variant={isQuizDone ? "secondary" : "destructive"}>
+                                    {isQuizDone ? "Done" : "Not Done"}
+                                  </Badge>
                                 </div>
-                              )}
-                              <Progress value={score} className="mt-2" />
-                              {!isQuizDone && (
-                                <Button
-                                  size="sm"
-                                  className="mt-2 w-full"
-                                  onClick={() => handleStartQuiz(quiz.id)}
-                                >
-                                  Start
-                                </Button>
-                              )}
-                            </li>
-                          );
-                        })}
-                    </ul>
-                  ) : (
-                    <p className="text-gray-500">No published quizzes available for this subject.</p>
-                  )
+                                {isQuizDone && (
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600">Score:</span>
+                                    <span className="text-sm font-semibold">{quizRecord.score}/{quizRecord.totalQuestions}</span>
+                                  </div>
+                                )}
+                                <Progress value={score} className="mt-2" />
+                                {!isQuizDone && (
+                                  <Button
+                                    size="sm"
+                                    className="mt-2 w-full"
+                                    onClick={() => handleStartQuiz(quiz.id)}
+                                  >
+                                    Start
+                                  </Button>
+                                )}
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    ) : (
+                      <p className="text-gray-500">No published quizzes available for this subject.</p>
+                    )}
+                  </>
                 ) : (
                   <p className="text-gray-500">Please select a subject to view quizzes.</p>
                 )
@@ -418,7 +436,7 @@ export const StudentView: React.FC<StudentViewProps> = ({
       </main>
 
       {/* Footer */}
-      <footer className="bg-[#1A1617] text-white text-center p-2">
+      <footer className="bg-[#1A1617] text-white text-center p-2 relative">
         <p className="text-xs">&copy; 2024 PASS College. All rights reserved.</p>
       </footer>
       <Toaster />

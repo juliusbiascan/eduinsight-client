@@ -1,7 +1,7 @@
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import { Button } from '../../../components/ui/button';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom'; // Add import for Link
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select';
 import { useEffect, useState } from 'react';
 import { useToast } from '@/renderer/hooks/use-toast';
@@ -10,6 +10,7 @@ import LoadingSpinner from '../../../components/ui/loading-spinner';
 import PasswordStrength from '../../../components/ui/password-strength';
 import { motion } from 'framer-motion';
 import Message from '../../../components/ui/message';
+import { Eye, EyeOff } from 'lucide-react'; // Add import for eye icons
 
 const SignUpForm = () => {
     const navigate = useNavigate();
@@ -24,24 +25,56 @@ const SignUpForm = () => {
         role: '',
         email: '',
         contactNo: '',
-        address: '',
         password: '',
         confirmPassword: ''
     });
+    const [devicePurpose, setDevicePurpose] = useState('');
+    const [agreeTerms, setAgreeTerms] = useState(false); // Add state for terms agreement
     const [isLoading, setIsLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [passwordMatch, setPasswordMatch] = useState(true);
+    const [showPassword, setShowPassword] = useState(false); // Add state for showing password
 
     useEffect(() => {
-        api.database.getDevice().then(devices => {
+        Promise.all([
+            api.database.getDevice(),
+            api.store.get('devicePurpose')
+        ]).then(([devices, purpose]) => {
             if (devices.length > 0) {
                 setDevice(devices[0]);
+            }
+            setDevicePurpose(purpose);
+            // Automatically set role and yearLevel based on device purpose
+            if (purpose === 'TEACHING') {
+                handleChange('role', 'TEACHER');
+                handleChange('yearLevel', 'FIRST'); // Set default yearLevel for teachers
+            } else if (purpose === 'STUDENT') {
+                handleChange('role', 'STUDENT');
             }
         });
     }, []);
 
+    const formatSchoolId = (value: string) => {
+        // Remove non-numeric characters
+        const numbers = value.replace(/[^\d]/g, '');
+        
+        // Limit to 7 digits
+        if (numbers.length > 7) return formData.schoolId;
+        
+        // Format as XX-XXXXX
+        if (numbers.length <= 2) {
+            return numbers;
+        } else {
+            return `${numbers.slice(0, 2)}-${numbers.slice(2)}`;
+        }
+    };
+
     const handleChange = (field: string, value: string) => {
+        if (field === 'schoolId') {
+            value = formatSchoolId(value);
+        }
+        
         setFormData(prev => ({
             ...prev,
             [field]: value
@@ -59,6 +92,24 @@ const SignUpForm = () => {
 
     const validateForm = () => {
         const newErrors: Record<string, string> = {};
+
+        // Device purpose validation
+        if (devicePurpose === 'TEACHING' && formData.role !== 'TEACHER') {
+            newErrors.role = "This device is registered for teaching purposes only";
+        }
+        if (devicePurpose === 'STUDENT' && formData.role !== 'STUDENT') {
+            newErrors.role = "This device is registered for student use only";
+        }
+
+        // Modify validation to only check school ID for students
+        if (devicePurpose === 'STUDENT') {
+            if (!formData.schoolId) {
+                newErrors.schoolId = "School ID is required";
+            }
+            if (!formData.yearLevel) {
+                newErrors.yearLevel = "Year level is required";
+            }
+        }
 
         if (formData.password.length < 8) {
             newErrors.password = "Password must be at least 8 characters";
@@ -85,15 +136,26 @@ const SignUpForm = () => {
 
     const handleSignUp = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!agreeTerms) {
+            setErrors(prev => ({ ...prev, terms: "You must agree to the terms and conditions." }));
+            return;
+        }
         if (!validateForm()) return;
 
         setIsLoading(true);
         setMessage(null);
 
         try {
+            // If teacher, ensure yearLevel is set
+            const submissionData = {
+                ...formData,
+                yearLevel: devicePurpose === 'TEACHING' ? 'FIRST' : formData.yearLevel,
+                schoolId: devicePurpose === 'TEACHING' ? 'TEACHER' : formData.schoolId
+            };
+
             const { success, message } = await api.auth.register({
                 deviceId: device?.id,
-                ...formData
+                ...submissionData
             });
 
             setMessage({
@@ -136,7 +198,7 @@ const SignUpForm = () => {
                     <legend className="text-base font-semibold text-[#1A1617] pb-1 border-b">
                         Personal Information
                     </legend>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className={devicePurpose === 'STUDENT' ? "grid grid-cols-2 gap-4" : "flex flex-col gap-4"}>
                         <div className="space-y-2">
                             <Label htmlFor="firstName">First Name</Label>
                             <Input
@@ -160,17 +222,21 @@ const SignUpForm = () => {
                             />
                         </div>
                     </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="schoolId">School ID</Label>
-                        <Input
-                            id="schoolId"
-                            type="text"
-                            placeholder="Enter your school ID"
-                            required
-                            value={formData.schoolId}
-                            onChange={(e) => handleChange('schoolId', e.target.value)}
-                        />
-                    </div>
+                    {/* Only show school ID for students */}
+                    {devicePurpose === 'STUDENT' && (
+                        <div className="space-y-2">
+                            <Label htmlFor="schoolId">School ID</Label>
+                            <Input
+                                id="schoolId"
+                                type="text"
+                                placeholder="YY-XXXXX"
+                                required
+                                value={formData.schoolId}
+                                onChange={(e) => handleChange('schoolId', e.target.value)}
+                                maxLength={8} // 7 digits + 1 hyphen
+                            />
+                        </div>
+                    )}
                 </fieldset>
 
                 {/* Academic Information Section */}
@@ -196,32 +262,30 @@ const SignUpForm = () => {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="yearLevel">Year Level</Label>
-                            <Select onValueChange={(value) => handleChange('yearLevel', value)}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select year" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="FIRST">First Year</SelectItem>
-                                    <SelectItem value="SECOND">Second Year</SelectItem>
-                                    <SelectItem value="THIRD">Third Year</SelectItem>
-                                    <SelectItem value="FOURTH">Fourth Year</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+                        {/* Only show year level for students */}
+                        {devicePurpose === 'STUDENT' && (
+                            <div className="space-y-2">
+                                <Label htmlFor="yearLevel">Year Level</Label>
+                                <Select onValueChange={(value) => handleChange('yearLevel', value)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select year" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="FIRST">First Year</SelectItem>
+                                        <SelectItem value="SECOND">Second Year</SelectItem>
+                                        <SelectItem value="THIRD">Third Year</SelectItem>
+                                        <SelectItem value="FOURTH">Fourth Year</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="role">Register as</Label>
-                        <Select onValueChange={(value) => handleChange('role', value)}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select role" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="STUDENT">Student</SelectItem>
-                                <SelectItem value="TEACHER">Teacher</SelectItem>
-                            </SelectContent>
-                        </Select>
+                        <Label htmlFor="role">Registering as</Label>
+                        <div className="p-2 bg-gray-50 border rounded-md text-gray-700">
+                            {devicePurpose === 'TEACHING' ? 'Teacher' : 'Student'}
+                        </div>
+                        {errors.role && <p className="text-red-500 text-sm">{errors.role}</p>}
                     </div>
                 </fieldset>
 
@@ -259,17 +323,7 @@ const SignUpForm = () => {
                             {errors.contactNo && <p className="text-red-500 text-sm">{errors.contactNo}</p>}
                         </div>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="address">Address</Label>
-                            <Input
-                                id="address"
-                                type="text"
-                                placeholder="Enter your address"
-                                required
-                                value={formData.address}
-                                onChange={(e) => handleChange('address', e.target.value)}
-                            />
-                        </div>
+                        
                     </div>
                 </fieldset>
 
@@ -278,7 +332,7 @@ const SignUpForm = () => {
                     <legend className="text-base font-semibold text-[#1A1617] pb-1 border-b">
                         Account Security
                     </legend>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-4">
                         <div className="space-y-2">
                             <Label htmlFor="password">Password</Label>
                             <Input
@@ -297,14 +351,14 @@ const SignUpForm = () => {
                                     {errors.password}
                                 </p>
                             )}
-                            <PasswordStrength password={formData.password} />
+                            
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="confirmPassword">Confirm Password</Label>
                             <div className="relative">
                                 <Input
                                     id="confirmPassword"
-                                    type="password"
+                                    type={showPassword ? "text" : "password"}
                                     placeholder="••••••••"
                                     required
                                     value={formData.confirmPassword}
@@ -313,20 +367,15 @@ const SignUpForm = () => {
                                     aria-invalid={!passwordMatch ? 'true' : 'false'}
                                     aria-describedby="confirm-password-error"
                                 />
-                                {formData.confirmPassword && (
-                                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                                        {passwordMatch ? (
-                                            <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                            </svg>
-                                        ) : (
-                                            <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                            </svg>
-                                        )}
-                                    </div>
-                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                                >
+                                    {showPassword ? <EyeOff className="w-5 h-5 text-gray-500" /> : <Eye className="w-5 h-5 text-gray-500" />}
+                                </button>
                             </div>
+                            <PasswordStrength password={formData.password} />
                             {!passwordMatch && formData.confirmPassword && (
                                 <p className="text-red-500 text-sm" id="confirm-password-error">
                                     Passwords don't match
@@ -336,6 +385,23 @@ const SignUpForm = () => {
                     </div>
                 </fieldset>
                 </div>
+                <div className="flex items-center">
+                    <input
+                        id="terms"
+                        type="checkbox"
+                        checked={agreeTerms}
+                        onChange={(e) => setAgreeTerms(e.target.checked)}
+                        className="h-4 w-4 text-[#C9121F] border-gray-300 rounded"
+                        required
+                    />
+                    <label htmlFor="terms" className="ml-2 block text-sm text-[#1A1617]">
+                        I agree to the{' '}
+                        <Link to="/terms" className="text-[#C9121F] hover:underline">
+                            Terms and Conditions
+                        </Link> {/* Replace <a> with <Link> */}
+                    </label>
+                </div>
+                {errors.terms && <p className="text-red-500 text-sm">{errors.terms}</p>}
                 <div className="pt-2 space-y-4">
                     <Button
                         type="submit"

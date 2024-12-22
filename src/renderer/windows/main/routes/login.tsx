@@ -9,8 +9,9 @@ import { Label } from '../../../components/ui/label';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Message from '../../../components/ui/message';
+import { Eye, EyeOff } from 'lucide-react'; // Add import for eye icons
 
-const MainPage: React.FC = () => {
+const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [device, setDevice] = useState<Device | null>(null);
   const { toast } = useToast();
@@ -114,7 +115,7 @@ const MainPage: React.FC = () => {
               onClick={() => setShowPassword(!showPassword)}
               className="absolute right-3 top-1/2 transform -translate-y-1/2"
             >
-              {showPassword ? "Hide" : "Show"}
+              {showPassword ? <EyeOff className="w-5 h-5 text-gray-500" /> : <Eye className="w-5 h-5 text-gray-500" />}
             </button>
           </div>
 
@@ -176,4 +177,4 @@ const MainPage: React.FC = () => {
   );
 };
 
-export default MainPage;
+export default LoginPage;

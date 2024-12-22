@@ -218,7 +218,7 @@ const QuizLibrary: React.FC = () => {
       const untitledQuiz = {
         userId: user?.id || '',
         title: `Untitled Quiz ${Math.floor(Math.random() * 1000)}`,
-        grade: "",
+  
         author: user?.firstName + ' ' + user?.lastName || 'Anonymous',
         color: '#f0f0f0',
         visibility: 'public',

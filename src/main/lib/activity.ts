@@ -1,5 +1,5 @@
 //import Store from 'electron-store';
-import { DeviceUserActivity, PrismaClient } from '@prisma/client';
+import { ActivityLogs, PrismaClient } from '@prisma/client';
 import _ from 'underscore';
 import Store from 'electron-store';
 import DatabaseClient from './database-client';
@@ -40,10 +40,10 @@ class ActivityManager {
     this.deviceId = this.store.get('deviceId') as string;
   }
 
-  async save(activity: Omit<DeviceUserActivity, 'id' | 'time' | 'userId' | 'deviceId' | 'labId' | 'createdAt' | 'updatedAt'>): Promise<boolean> {
+  async save(activity: Omit<ActivityLogs, 'id' | 'time' | 'userId' | 'deviceId' | 'labId' | 'createdAt' | 'updatedAt'>): Promise<boolean> {
     const lastActivity = await this.getLastActivity();
     if (!lastActivity || lastActivity.title !== activity.title || this.diffMinutes(new Date(lastActivity.time), new Date()) >= 1) {
-      const newActivity = await this.prisma.deviceUserActivity.create({
+      const newActivity = await this.prisma.activityLogs.create({
         data: {
           ...activity,
           time: new Date(),
@@ -57,8 +57,8 @@ class ActivityManager {
     return false;
   }
 
-  async getLastActivity(): Promise<DeviceUserActivity | undefined> {
-    return _.last(await this.prisma.deviceUserActivity.findMany({
+  async getLastActivity(): Promise<ActivityLogs | undefined> {
+    return _.last(await this.prisma.activityLogs.findMany({
       where: {
         labId: this.labId,
         userId: this.userId,
@@ -67,8 +67,8 @@ class ActivityManager {
     }));
   }
 
-  async all(): Promise<DeviceUserActivity[]> {
-    return this.prisma.deviceUserActivity.findMany({
+  async all(): Promise<ActivityLogs[]> {
+    return this.prisma.activityLogs.findMany({
       where: {
         labId: this.labId,
         userId: this.userId,
@@ -77,8 +77,8 @@ class ActivityManager {
     });
   }
 
-  async byDay(day: string): Promise<DeviceUserActivity[]> {
-    const activities = await this.prisma.deviceUserActivity.findMany({
+  async byDay(day: string): Promise<ActivityLogs[]> {
+    const activities = await this.prisma.activityLogs.findMany({
       where: {
         labId: this.labId,
         userId: this.userId,
@@ -126,7 +126,7 @@ class ActivityManager {
     return events;
   }
 
-  formatActivities(activities: DeviceUserActivity[]): Breakdown[] {
+  formatActivities(activities: ActivityLogs[]): Breakdown[] {
     const breakdown: Breakdown[] = [];
 
     for (let i = 0; i < activities.length; i++) {

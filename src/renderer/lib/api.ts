@@ -157,7 +157,12 @@ export default {
       ipcRenderer.invoke(
         IPCRoute.DATABASE_GET_SUBJECT_DATA,
         subjectId,
-      ) as Promise<Array<Subject>>,
+      ) as Promise<Array<Subject & {
+        quizzes: Array<Quiz & { questions: QuizQuestion[] }>;
+        activities: Activity[];
+        quizRecord: QuizRecord[];
+        activityRecord: ActivityRecord[];
+      }>>,
     getSubjectRecordsBySubjectId: (subjectId: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_GET_SUBJECT_RECORDS_BY_SUBJECT_ID,
@@ -252,6 +257,31 @@ export default {
         quizId,
         questions,
       ) as Promise<Quiz & { questions: QuizQuestion[] }>,
+    updateQuizQuestionsOrder: (quizId: string, questions: Array<{id: string, order: number}>) =>
+      ipcRenderer.invoke(
+        IPCRoute.DATABASE_UPDATE_QUIZ_QUESTIONS_ORDER,
+        quizId,
+        questions
+      ) as Promise<Quiz & { questions: QuizQuestion[] }>,
+    getQuizRecordsByUserAndSubject: (userId: string, subjectId: string) =>
+      ipcRenderer.invoke(
+        IPCRoute.DATABASE_GET_QUIZ_RECORDS_BY_USER_AND_SUBJECT,
+        userId,
+        subjectId,
+      ) as Promise<Array<QuizRecord & {
+        quiz: Quiz & {
+          questions: QuizQuestion[];
+        };
+      }>>,
+
+    getActivityRecordsByUserAndSubject: (userId: string, subjectId: string) =>
+      ipcRenderer.invoke(
+        IPCRoute.DATABASE_GET_ACTIVITY_RECORDS_BY_USER_AND_SUBJECT,
+        userId,
+        subjectId,
+      ) as Promise<Array<ActivityRecord & {
+        activity: Activity;
+      }>>,
   },
   device: {
     init: () => ipcRenderer.send(IPCRoute.DEVICE_INITIATED),
@@ -308,7 +338,6 @@ export default {
       role: string;
       email: string;
       contactNo: string;
-      address: string;
       password: string;
     }) =>
       ipcRenderer.invoke(IPCRoute.AUTH_REGISTER, data) as Promise<{

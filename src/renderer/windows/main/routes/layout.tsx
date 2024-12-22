@@ -2,15 +2,21 @@ import logo from '../../../assets/passlogo-small.png';
 import { Toaster } from '@/renderer/components/ui/toaster';
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 
 const MainLayout = () => {
+  const navigate = useNavigate();
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   
   useEffect(() => {
 
     const unsubscribe = api.socket.connectionStatus((status) => {
       setConnectionStatus(status);
+      if(status === "disconnected") {
+        navigate('/server-down');
+      }else {
+        navigate('/');
+      }
     });
 
     return () => {

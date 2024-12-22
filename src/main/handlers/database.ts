@@ -3,7 +3,7 @@ import { IPCRoute } from '@/shared/constants';
 import { machineIdSync } from 'node-machine-id';
 import { getIPAddress, getNetworkNames } from '../lib/ipaddress';
 import { v4 as uuidv4 } from 'uuid';
-import { DeviceUserRole, Quiz, QuizQuestion, QuizRecord, State, Subject, YearLevel } from '@prisma/client';
+import { DeviceUserRole, Quiz, QuizQuestion, QuizRecord, State, Subject } from '@prisma/client';
 import { sleep } from '@/shared/utils';
 import { getSocketInstance } from '../lib/socket-manager';
 import { Database } from '../lib';
@@ -12,6 +12,7 @@ import fs from 'fs';
 import csv from 'csv-parser';
 import xlsx from 'xlsx';
 import { hash, compare } from 'bcryptjs';
+import { startMonitoring, stopPowerMonitoring } from '../lib/monitoring';
 
 const store = StoreManager.getInstance();
 
@@ -163,10 +164,30 @@ export default function () {
   });
 
   ipcMain.handle(IPCRoute.DATABASE_GET_SUBJECT_DATA, async (_e, subjectId: string) => {
-    return await Database.prisma.subject.findMany({ where: { id: subjectId } });
+    try {
+      const subject = await Database.prisma.subject.findFirst({
+        where: { id: subjectId },
+        include: {
+          quizzes: {
+            include: {
+              questions: true
+            }
+          },
+          activities: {
+            where: {
+              published: true
+            }
+          },
+          quizRecord: true,
+          activityRecord: true
+        }
+      });
+      return subject ? [subject] : [];
+    } catch (error) {
+      console.error('Error fetching subject data:', error);
+      return [];
+    }
   });
-
-
 
   ipcMain.handle(IPCRoute.DATABASE_GET_SUBJECT_RECORDS_BY_SUBJECT_ID, async (_e, subjectId: string) => {
     return await Database.prisma.subjectRecord.findMany({ where: { subjectId } });
@@ -177,25 +198,7 @@ export default function () {
     return await Database.prisma.activeDeviceUser.findMany({ where: { userId: { in: subjectRecords.map(record => record.userId) } } });
   });
 
-  ipcMain.on(IPCRoute.DATABASE_USER_LOGOUT, async (_e, userId: string, deviceId: string) => {
-    await Database.prisma.activeDeviceUser.deleteMany({
-      where: {
-        deviceId,
-        userId
-      }
-    });
 
-    await Database.prisma.device.update({ where: { id: deviceId }, data: { isUsed: false } })
-
-    // Get the socket instance
-    const socket = getSocketInstance();
-
-    // Emit the logout event to the server
-    if (socket && socket.connected) {
-      socket.emit('logout-user', deviceId);
-    }
-
-  })
 
   ipcMain.on(IPCRoute.DATABASE_DELETE_SUBJECT, async (_e, subjectId: string) => {
     await Database.prisma.subject.delete({
@@ -300,16 +303,30 @@ export default function () {
 
   ipcMain.handle(IPCRoute.DATABASE_CREATE_QUIZ_QUESTION, async (_e, quizId: string, question: Omit<QuizQuestion, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
+      // Get all questions for this quiz
+      const allQuestions = await Database.prisma.quizQuestion.findMany({
+        where: { quizId },
+        orderBy: { order: 'asc' },
+      });
+
+      // Calculate the new order (max order + 1, or 0 if no questions exist)
+      const nextOrder = allQuestions.length > 0 
+        ? Math.max(...allQuestions.map(q => q.order)) + 1 
+        : 0;
+
+      // Create the new question with proper order
       const createdQuestion = await Database.prisma.quizQuestion.create({
         data: {
           ...question,
-          quizId
+          quizId,
+          order: nextOrder,
         }
       });
+
       return createdQuestion;
     } catch (error) {
       console.error('Error creating quiz question:', error);
-      return null;
+      throw error;
     }
   });
 
@@ -367,6 +384,7 @@ export default function () {
               questions.push({
                 question: row.question,
                 type: row.type,
+                order: parseInt(row.order) || 0,
                 options: JSON.parse(row.options),
                 time: parseInt(row.time) || 60,
                 points: parseInt(row.points) || 1,
@@ -384,6 +402,7 @@ export default function () {
         questions.push(...data.map((row: any) => ({
           question: row.question,
           type: row.type,
+          order: parseInt(row.order) || 0,
           options: JSON.parse(row.options),
           time: parseInt(row.time) || 60,
           points: parseInt(row.points) || 1,
@@ -422,6 +441,86 @@ export default function () {
     }
   });
 
+  ipcMain.handle(IPCRoute.DATABASE_UPDATE_QUIZ_QUESTIONS_ORDER, async (_e, quizId: string, updatedQuestions: Array<{id: string, order: number}>) => {
+    try {
+      // Start a transaction
+      const result = await Database.prisma.$transaction(async (prisma) => {
+        // Update each question's order
+        for (const question of updatedQuestions) {
+          await prisma.quizQuestion.update({
+            where: { id: question.id },
+            data: { order: question.order }
+          });
+        }
+
+        // Fetch and return the updated quiz with ordered questions
+        return await prisma.quiz.findFirst({
+          where: { id: quizId },
+          include: {
+            questions: {
+              orderBy: {
+                order: 'asc'
+              }
+            }
+          }
+        });
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error updating question order:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle(IPCRoute.DATABASE_GET_QUIZ_RECORDS_BY_USER_AND_SUBJECT, async (_e, userId: string, subjectId: string) => {
+    try {
+      return await Database.prisma.quizRecord.findMany({
+        where: { 
+          userId,
+          subjectId
+        },
+        include: {
+          quiz: {
+            include: {
+              questions: {
+                orderBy: {
+                  order: 'asc'
+                }
+              }
+            }
+          }
+        },
+        orderBy: {
+          completedAt: 'desc'
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching quiz records:', error);
+      return [];
+    }
+  });
+
+  ipcMain.handle(IPCRoute.DATABASE_GET_ACTIVITY_RECORDS_BY_USER_AND_SUBJECT, async (_e, userId: string, subjectId: string) => {
+    try {
+      return await Database.prisma.activityRecord.findMany({
+        where: {
+          userId,
+          subjectId
+        },
+        include: {
+          activity: true
+        },
+        orderBy: {
+          completedAt: 'desc'
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching activity records:', error);
+      return [];
+    }
+  });
+
   ipcMain.handle(IPCRoute.AUTH_REGISTER, async (_, data) => {
     try {
       const device = await Database.prisma.device.findFirst({where: {id: data.deviceId}});
@@ -436,18 +535,20 @@ export default function () {
 
       const hashedPassword = await hash(data.password, 10);
 
+      // Set default yearLevel for teachers
+      const yearLevel = data.role === 'TEACHER' ? 'FIRST' : data.yearLevel;
+
       await Database.prisma.deviceUser.create({
         data: {
           labId: device.labId,
-          schoolId: data.schoolId,
+          schoolId: data.schoolId || 'TEACHER', // Set default schoolId for teachers
           firstName: data.firstName,
           lastName: data.lastName,
           course: data.course,
-          yearLevel: data.yearLevel as YearLevel,
+          yearLevel: yearLevel, // Use the modified yearLevel
           role: data.role as DeviceUserRole,
           email: data.email,
           contactNo: data.contactNo,
-          address: data.address,
           password: hashedPassword
         }
       });
@@ -509,12 +610,32 @@ export default function () {
           }
         })
       ]);
-
       store.set('userId', user.id);
+      startMonitoring(device.id, user.id, device.labId);
       return { success: true, message: 'Login successful' };
     } catch (error) {
       console.error('Login error:', error);
       return { success: false, message: 'Login failed' };
     }
   });
+
+  ipcMain.on(IPCRoute.DATABASE_USER_LOGOUT, async (_e, userId: string, deviceId: string) => {
+    await Database.prisma.activeDeviceUser.deleteMany({
+      where: {
+        deviceId,
+        userId
+      }
+    });
+
+    await Database.prisma.device.update({ where: { id: deviceId }, data: { isUsed: false } })
+
+    stopPowerMonitoring();
+    // Get the socket instance
+    const socket = getSocketInstance();
+
+    // Emit the logout event to the server
+    if (socket && socket.connected) {
+      socket.emit('logout-user', deviceId);
+    }
+  })
 }

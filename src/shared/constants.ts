@@ -79,6 +79,7 @@ export enum IPCRoute {
   DATABASE_UPDATE_QUIZ_QUESTION = '/database/update_quiz_question',
   DATABASE_DELETE_QUIZ_QUESTION = '/database/delete_quiz_question',
   DATABASE_SAVE_QUIZ_RECORD = '/database/save_quiz_record',
+  DATABASE_UPDATE_QUIZ_QUESTIONS_ORDER = 'database:update-quiz-questions-order',
   UPDATER_CHECKING = '/updater/checking',
   UPDATER_DOWNLOADING = '/updater/downloading',
   UPDATER_FINISHED = '/updater/finished',
@@ -113,4 +114,6 @@ export enum IPCRoute {
   // Add these new routes
   AUTH_LOGIN = '/auth/login',
   AUTH_REGISTER = '/auth/register',
+  DATABASE_GET_QUIZ_RECORDS_BY_USER_AND_SUBJECT = '/database/get_quiz_records_by_user_and_subject',
+  DATABASE_GET_ACTIVITY_RECORDS_BY_USER_AND_SUBJECT = '/database/get_activity_records_by_user_and_subject',
 }

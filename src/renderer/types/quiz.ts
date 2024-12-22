@@ -1,4 +1,3 @@
-
 interface QuestionType {
   icon: React.ReactNode;
   label: string;
@@ -8,6 +7,8 @@ interface QuestionType {
 const questionTypes: QuestionType[] = [
   { icon: '✅', label: 'Multiple Choice', category: 'basic' },
   { icon: '➖', label: 'Fill in the Blank', category: 'basic' },
+  { icon: '✍️', label: 'Identification', category: 'basic' },
+  { icon: '📝', label: 'Enumeration', category: 'basic' },
   { icon: '📝', label: 'Comprehension', category: 'basic' },
   { icon: '🎨', label: 'Draw', category: 'openEnded' },
   { icon: '🎥', label: 'Video Response', category: 'openEnded' },

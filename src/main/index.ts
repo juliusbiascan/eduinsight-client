@@ -15,6 +15,8 @@ import StoreManager from '@/main/lib/store';
 import Store from 'electron-store';
 import { Socket } from 'socket.io-client';
 import { sleep } from '@/shared/utils';
+import { startMonitoring } from './lib/monitoring';
+import shutdownCommand from "electron-shutdown-command";
 
 const store = StoreManager.getInstance();
 const deviceId = store.get('deviceId') as string;
@@ -24,7 +26,9 @@ const databaseUrl = store.get('databaseUrl') as string;
 
 
 function setupSocketEventListeners(socket: Socket) {
+  
   let captureInterval: NodeJS.Timeout | null = null;
+
   console.log("Setting up socket event listeners", { connectionUrl, databaseUrl, deviceId: store.get('deviceId'), labId: store.get('labId'), userId: store.get('userId') });
 
   socket
@@ -53,6 +57,21 @@ function setupSocketEventListeners(socket: Socket) {
     })
     .on('mouse_click', (data) => {
       if (data) robot.mouseClick(data.button, data.double);
+    })
+    .on('shutdown', ({deviceId}) => {
+      if (deviceId === deviceId) {
+        shutdownCommand.shutdown();
+      }
+    })
+    .on('logoff', ({deviceId}) => {
+      if (deviceId === deviceId) {
+        shutdownCommand.logoff();
+      }
+    })
+    .on('reboot', ({deviceId: string}) => {
+      if (deviceId === string) {
+        shutdownCommand.reboot();
+      }
     })
     .on('mouse_scroll', ({ deltaX, deltaY }) => robot.scrollMouse(deltaX, deltaY))
     .on('mouse_drag', ({ direction, clientX, clientY, clientWidth, clientHeight }) => {
@@ -114,7 +133,8 @@ function setupSocketEventListeners(socket: Socket) {
         const device = await Database.prisma.device.findFirst({ where: { id: deviceId } });
 
         if (!device) {
-          throw new Error('Device not found');
+          const window = WindowManager.get(WindowManager.WINDOW_CONFIGS.setup_window.id);
+          sleep(2000).then(() => window.webContents.send('mode', "device-setup"));
         }
 
         socket.emit('join-server', device.id);
@@ -122,6 +142,7 @@ function setupSocketEventListeners(socket: Socket) {
 
         if (activeUser) {
           store.set('userId', activeUser.userId);
+          startMonitoring(activeUser.userId, device.id, labId);
           WindowManager.get(WindowManager.WINDOW_CONFIGS.welcome_window.id);
           WindowManager.get(WindowManager.WINDOW_CONFIGS.main_window.id).close();
         } else {
@@ -190,49 +211,6 @@ function handleOnReady() {
 }
 
 (async () => {
-
-  // const handleStartupEvent = function () {
-
-  //   if (process.platform !== 'win32') {
-  //     return false;
-  //   }
-
-  //   const squirrelCommand = process.argv[1];
-  //   switch (squirrelCommand) {
-  //     case '--squirrel-install':
-  //     case '--squirrel-updated':
-
-  //       // Optionally do things such as:
-  //       //
-  //       // - Install desktop and start menu shortcuts
-  //       // - Add your .exe to the PATH
-  //       // - Write to the registry for things like file associations and
-  //       //   explorer context menus
-
-  //       // Always quit when done
-  //       app.quit();
-
-  //       return true;
-  //     case '--squirrel-uninstall':
-  //       // Undo anything you did in the --squirrel-install and
-  //       // --squirrel-updated handlers
-
-  //       // Always quit when done
-  //       app.quit();
-
-  //       return true;
-  //     case '--squirrel-obsolete':
-  //       // This is called on the outgoing version of your app before
-  //       // we update to the new version - it's the opposite of
-  //       // --squirrel-updated
-  //       app.quit();
-  //       return true;
-  //   }
-  // }
-
-  // if (handleStartupEvent()) {
-  //   return;
-  // }
 
   if (require('electron-squirrel-startup')) {
     app.quit();

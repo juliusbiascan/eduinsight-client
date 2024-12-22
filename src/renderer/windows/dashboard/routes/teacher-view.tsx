@@ -16,7 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { generateSubjectCode } from "@/shared/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/renderer/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/renderer/components/ui/avatar"
-import { Trash2, Stars, LogOut, PlusCircle, RefreshCw, Users } from "lucide-react";
+import { Trash2, Stars, LogOut, PlusCircle, RefreshCw, Users, Paperclip } from "lucide-react";
 import { Badge } from "@/renderer/components/ui/badge"
 import { ScrollArea } from "@/renderer/components/ui/scroll-area"
 import { useNavigate } from "react-router-dom";
@@ -236,7 +236,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
   return (
     <div className="min-h-screen bg-[#EAEAEB]">
       {/* Header */}
-      <header className="bg-[#C9121F] border-b shadow-lg">
+      <header className="bg-[#C9121F] border-b shadow-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
@@ -295,7 +295,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
         {/* Subject Selection Area */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border-l-4 border-[#C9121F]">
           <div className="flex items-center justify-between mb-6">
@@ -406,10 +406,10 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                 </Button>
                 <Button
                   className="w-full justify-start"
-                  disabled={!selectedSubject}
+                  disabled={true}
                 >
                   <PlusCircle className="mr-2 h-4 w-4" />
-                  Create New Activity
+                  Create New Activity (Coming Soon)
                 </Button>
                 {/* Add more assignment options */}
               </div>
@@ -430,7 +430,26 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                   disabled={!selectedSubject}
                 >
                   <Stars className="mr-2 h-4 w-4" />
-                  View Student Progress Reports
+                  See Student Performance
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+          {/* Analytics Card */}
+          <Card className="bg-gradient-to-br from-white to-[#EAEAEB] border-t-4 border-[#C9121F]">
+            <CardHeader>
+              <CardTitle className="text-amber-900">View Results</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <Button
+                  className="w-full justify-start"
+                  variant="outline"
+                  onClick={() => selectedSubject ? navigate(`/results/quiz-results/${selectedSubject.id}`) : null}
+                  disabled={!selectedSubject}
+                >
+                  <Paperclip className="mr-2 h-4 w-4" />
+                  View Quiz Result and Scores
                 </Button>
               </div>
             </CardContent>
@@ -450,7 +469,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
               </Badge>
             </div>
 
-            <ScrollArea className="h-[300px] rounded-md border p-4">
+            <ScrollArea className="h-[300px] rounded-md border p-4 no-scrollbar">
               <div className="space-y-4">
                 {subjectRecords.map((record) => {
                   const isActive = activeUsers.some(user => user.userId === record.userId);
