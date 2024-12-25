@@ -416,7 +416,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
           });
 
           screenShareStream.current = stream;
-          setIsScreenSharing(true);
+        
 
           activeUsers.forEach((user) => {
             if (!callConnections.current[user.userId]) {

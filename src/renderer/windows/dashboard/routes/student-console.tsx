@@ -101,33 +101,35 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const screenShareInterval = useRef<NodeJS.Timeout>();
   const connection = useRef<MediaConnection | null>(null);
-  const [teacherScreenStream, setTeacherScreenStream] = useState<MediaStream | null>(null);
+  const [teacherScreenStream, setTeacherScreenStream] =
+    useState<MediaStream | null>(null);
 
   useEffect(() => {
     if (peer) {
-      peer.on("connection", (conn) => {
-        conn.on("data", (data: { type: string; url?: string }) => {
-          console.log("Received data:", data);
-          if (data.type === "webpage" && data.url) {
+      peer.on('connection', (conn) => {
+        conn.on('data', (data: { type: string; url?: string }) => {
+          console.log('Received data:', data);
+          if (data.type === 'webpage' && data.url) {
             api.window.openExternalLink(data.url);
           }
         });
       });
-      
+
       peer.on('call', (call) => {
         console.log('Received call from peer:', call.peer);
-        call.answer(); // Answer the call without sending any stream
-        call.on('stream', (remoteStream) => {
-          console.log('Received stream from teacher');
-          setTeacherScreenStream(remoteStream);
-        });
+        if (screenStream) {
+          call.answer(screenStream); // Answer the call without sending any stream
+          call.on('stream', (remoteStream) => {
+            console.log('Received stream from teacher');
+            setTeacherScreenStream(remoteStream);
+          });
 
-        call.on('close', () => {
-          console.log('Call closed');
-          setTeacherScreenStream(null);
-        });
-
-        connection.current = call;
+          call.on('close', () => {
+            console.log('Call closed');
+            setTeacherScreenStream(null);
+          });
+          connection.current = call;
+        }
       });
 
       peer.on('error', (error) => {
