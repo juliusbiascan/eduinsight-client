@@ -53,6 +53,8 @@ import {
   Folders,
   Settings2Icon,
   Trash2Icon,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react';
 import { Badge } from '@/renderer/components/ui/badge';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
@@ -93,6 +95,7 @@ import {
 import { Skeleton } from '@/renderer/components/ui/skeleton';
 import { MediaConnection } from 'peerjs';
 import { usePeer } from '@/renderer/components/peer-provider';
+import { Switch } from '@/renderer/components/ui/switch';
 
 interface TeacherConsoleProps {
   user: DeviceUser & { subjects: Subject[] };
@@ -146,14 +149,15 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     null,
   );
   const [studentScreens, setStudentScreens] = useState<StudentScreenState>({});
-  const [callInfo, setCallInfo] = useState<MediaConnection>();
   const { peer } = usePeer();
-  const [isStudentScreenMaximized, setIsStudentScreenMaximized] = useState(false);
+  const [isStudentScreenMaximized, setIsStudentScreenMaximized] =
+    useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
-  const connection = useRef<MediaConnection | null>(null);
-
   const screenShareStream = useRef<MediaStream | null>(null);
+  const callConnections = useRef<Record<string, MediaConnection>>({});
+  const [showScreens, setShowScreens] = useState<boolean>(false);
+  const [isWebpageDialogOpen, setIsWebpageDialogOpen] = useState(false);
+  const [webpageUrl, setWebpageUrl] = useState('');
 
   const handleMaximizeStudentScreen = () => {
     setIsStudentScreenMaximized(true);
@@ -162,7 +166,6 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   const handleMinimizeStudentScreen = () => {
     setIsStudentScreenMaximized(false);
   };
-
 
   const fetchStudentInfo = useCallback(async (userId: string) => {
     try {
@@ -279,7 +282,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
         setActiveUsers(activeUsers);
 
         // Fetch student info for all records
-        subjectRecords.forEach((record: { userId: string; }) => {
+        subjectRecords.forEach((record: { userId: string }) => {
           fetchStudentInfo(record.userId);
         });
       };
@@ -359,7 +362,11 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     (userId: string, stream: MediaStream) => {
       const videoElement = document.createElement('video');
       videoElement.srcObject = stream;
-      videoElement.play();
+      videoElement.onloadedmetadata = () => {
+        videoElement.play().catch((error) => {
+          console.error('Error playing video:', error);
+        });
+      };
 
       setStudentScreens((prev) => ({
         ...prev,
@@ -376,122 +383,6 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     [],
   );
 
-  useEffect(() => {
-    if (selectedSubject) {
-      // Initialize screen states for active users
-      activeUsers.forEach((user) => {
-        setStudentScreens((prev) => ({
-          ...prev,
-          [user.userId]: {
-            loading: true,
-            error: null,
-            lastUpdate: null,
-          },
-        }));
-      });
-    }
-  }, [selectedSubject, activeUsers, handleScreenUpdate]);
-
-  useEffect(() => {
-    if (callInfo) {
-      callInfo
-        .on('stream', (remoteStream: MediaStream) => {
-          handleScreenUpdate(callInfo.peer, remoteStream);
-        })
-        .on('close', () => {
-          // Handle call close
-          setStudentScreens((prev) => ({
-            ...prev,
-            [callInfo.peer]: {
-              ...prev[callInfo.peer],
-              error: 'Screen share connection closed',
-            },
-          }));
-        })
-        .on('error', (error) => {
-          // Handle call error
-          console.error('Call error:', error);
-          setStudentScreens((prev) => ({
-            ...prev,
-            [callInfo.peer]: {
-              ...prev[callInfo.peer],
-              error: 'Screen share connection error',
-            },
-          }));
-        });
-    }
-  }, [callInfo, handleScreenUpdate]);
-
-  useEffect(() => {
-    if (selectedSubject) {
-      const startScreenShare = async () => {
-        try {
-          const sourceId = await api.screen.getScreenSourceId();
-          const stream = await (navigator.mediaDevices as any).getUserMedia({
-            audio: false,
-            video: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: sourceId,
-                maxWidth: 1280,
-                maxHeight: 720,
-                frameRate: { ideal: 15, max: 30 },
-              },
-            },
-          });
-
-          setScreenStream(stream);
-
-          return () => {
-            if (screenStream) {
-              screenStream.getTracks().forEach((track) => track.stop());
-              setScreenStream(null);
-            }
-            api.screen.stopScreenShare();
-          };
-        } catch (error) {
-          console.error('Error starting screen share:', error);
-          toast({
-            title: 'Screen Share Error',
-            description: 'Failed to start screen sharing',
-            variant: 'destructive',
-          });
-        }
-      };
-
-      startScreenShare();
-    }
-  }, [selectedSubject]);
-
-  useEffect(() => {
-    if (peer) {
-      peer.on('call', (call) => {
-        console.log('Received call from peer:', call.peer);
-        if (screenStream) {
-          call.answer(screenStream); // Answer the call with the screen stream
-          call.on('stream', (_remoteStream) => {
-            // Handle incoming stream
-            activeUsers.forEach(user => {
-              handleScreenUpdate(user.userId, _remoteStream);
-            });
-          });
-
-          call.on('close', () => {
-            console.log('Call closed');
-          });
-
-          connection.current = call;
-        } else {
-          console.log('No screen stream available to answer the call');
-        }
-      });
-
-      peer.on('error', (error) => {
-        console.error('PeerJS error:', error);
-      });
-    }
-  }, [screenStream, peer]);
-  
   // Add this new useEffect to handle screen data for selected student
   useEffect(() => {
     if (selectedStudent) {
@@ -509,162 +400,213 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     }
   }, [selectedStudent, studentScreens]);
 
+  useEffect(() => {
+    const showStudentScreens = async () => {
+      try {
+        if (showScreens) {
+          const sourceId = await api.screen.getScreenSourceId();
+          const stream = await (navigator.mediaDevices as any).getUserMedia({
+            audio: false,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: sourceId,
+              },
+            },
+          });
+
+          screenShareStream.current = stream;
+          setIsScreenSharing(true);
+
+          activeUsers.forEach((user) => {
+            if (!callConnections.current[user.userId]) {
+              const call = peer.call(user.userId, stream);
+              callConnections.current[user.userId] = call;
+              callConnections.current[user.userId]
+                .on('stream', (remoteStream: MediaStream) => {
+                  handleScreenUpdate(call.peer, remoteStream);
+                })
+                .on('close', () => {
+                  // Handle call close
+                  setStudentScreens((prev) => ({
+                    ...prev,
+                    [call.peer]: {
+                      ...prev[call.peer],
+                      error: 'Screen share connection closed',
+                    },
+                  }));
+                })
+                .on('error', (error) => {
+                  // Handle call error
+                  console.error('Call error:', error);
+                  setStudentScreens((prev) => ({
+                    ...prev,
+                    [call.peer]: {
+                      ...prev[call.peer],
+                      error: 'Screen share connection error',
+                    },
+                  }));
+                });
+            }
+          });
+
+          toast({
+            title: 'Screen Sharing Started',
+            description: 'You are now sharing your screen with students.',
+          });
+        }
+      } catch (error) {
+        console.error('Error starting screen share:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to start screen sharing. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    };
+    showStudentScreens();
+  }, [showScreens]);
+
   const handleStartScreenShare = async () => {
-    try {
-      const sourceId = await api.screen.getScreenSourceId();
-      const stream = await (navigator.mediaDevices as any).getUserMedia({
-        audio: false,
-        video: {
-          mandatory: {
-            chromeMediaSource: 'desktop',
-            chromeMediaSourceId: sourceId,
-          },
-        },
-      });
-
-      screenShareStream.current = stream;
-      setIsScreenSharing(true);
-
-      activeUsers.forEach((user) => {
-        const call = peer.call(user.userId, stream);
-        setCallInfo(call);
-      });
-
-      toast({
-        title: 'Screen Sharing Started',
-        description: 'You are now sharing your screen with students.',
-      });
-    } catch (error) {
-      console.error('Error starting screen share:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to start screen sharing. Please try again.',
-        variant: 'destructive',
-      });
-    }
+    //
   };
 
   const handleStopScreenShare = () => {
-    if (screenShareStream.current) {
-      screenShareStream.current.getTracks().forEach((track) => track.stop());
-      screenShareStream.current = null;
-      setIsScreenSharing(false);
+    // if (screenShareStream.current) {
+    //   screenShareStream.current.getTracks().forEach((track) => track.stop());
+    //   screenShareStream.current = null;
+    //   setIsScreenSharing(false);
+    //   toast({
+    //     title: 'Screen Sharing Stopped',
+    //     description: 'You have stopped sharing your screen.',
+    //   });
+    // }
+  };
 
+  const handleLaunchWebpage = () => {
+    if (selectedSubject && peer) {
+      for (const user of activeUsers) {
+        const conn = peer.connect(user.userId);
+        conn.on('open', () => {
+          conn.send({ type: 'webpage', url: webpageUrl });
+          conn.close();
+        });
+      }
       toast({
-        title: 'Screen Sharing Stopped',
-        description: 'You have stopped sharing your screen.',
+        title: 'Webpage Launched',
+        description: 'The webpage has been launched on student devices.',
       });
+      setIsWebpageDialogOpen(false);
+      setWebpageUrl('');
     }
   };
 
   // Update the renderStudentScreen function to include click handling
-  const renderStudentScreen = useCallback((userId: string, student: StudentInfo) => {
-    const screenState = studentScreens[userId];
-  
-    return (
-      <div
-        key={userId}
-        className={`flex flex-col p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer ${
-          isStudentScreenMaximized ? 'fixed inset-0 z-50 bg-white' : ''
-        }`}
-        onClick={() => {
-          setSelectedStudent(student);
-        }}
-      >
-        {/* Student Header */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center space-x-2">
-            <Avatar className="h-8 w-8">
-              <AvatarFallback>
-                {student?.firstName?.[0]}
-                {student?.lastName?.[0]}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="text-sm font-medium">
-                {student?.firstName} {student?.lastName}
-              </p>
-              <p className="text-xs text-gray-500">ID: {student?.schoolId}</p>
+  const renderStudentScreen = useCallback(
+    (userId: string, student: StudentInfo) => {
+      const screenState = studentScreens[userId];
+
+      return (
+        <div
+          key={userId}
+          className={`flex flex-col p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer ${
+            isStudentScreenMaximized ? 'fixed inset-0 z-50 bg-white' : ''
+          }`}
+          onClick={() => {
+            setSelectedStudent(student);
+          }}
+        >
+          {/* Student Header */}
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center space-x-2">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback>
+                  {student?.firstName?.[0]}
+                  {student?.lastName?.[0]}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="text-sm font-medium">
+                  {student?.firstName} {student?.lastName}
+                </p>
+                <p className="text-xs text-gray-500">ID: {student?.schoolId}</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Badge variant="default" className="text-xs">
+                {screenState?.loading ? 'Connecting' : 'Active'}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  isStudentScreenMaximized
+                    ? handleMinimizeStudentScreen()
+                    : handleMaximizeStudentScreen();
+                }}
+              >
+                {isStudentScreenMaximized ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
+              </Button>
             </div>
           </div>
-          <Badge variant="default" className="text-xs">
-            {screenState?.loading ? 'Connecting' : 'Active'}
-          </Badge>
-        </div>
-  
-        {/* Screen Preview */}
-        <div className="relative w-full aspect-video bg-gray-200 rounded-lg overflow-hidden group">
-          {screenState?.loading ? (
-            <Skeleton className="w-full h-full" />
-          ) : screenState?.error ? (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-red-500">{screenState.error}</p>
-            </div>
-          ) : screenState?.lastUpdate ? (
-            <>
-              <video
-                ref={(el) => {
-                  if (el) {
-                    el.srcObject = screenState.lastUpdate.data.srcObject;
-                    if (el.paused) {
-                      el.play();
-                    }
-                  }
-                }}
-                className="w-full h-full object-contain"
-              />
-              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="pointer-events-none"
-                >
-                  <Eye className="h-4 w-4 mr-2" />
-                  View Details
-                </Button>
+
+          {/* Screen Preview */}
+          <div className="relative w-full aspect-video bg-gray-200 rounded-lg overflow-hidden group">
+            {screenState?.loading ? (
+              <Skeleton className="w-full h-full" />
+            ) : screenState?.error ? (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-sm text-red-500">{screenState.error}</p>
               </div>
-            </>
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-gray-400">
-                Waiting for screen share...
+            ) : screenState?.lastUpdate ? (
+              <>
+                <video
+                  ref={(el) => {
+                    if (el) {
+                      el.srcObject = screenState.lastUpdate.data.srcObject;
+                      el.onloadedmetadata = () => {
+                        el.play().catch((error) => {
+                          console.error('Error playing video:', error);
+                        });
+                      };
+                    }
+                  }}
+                  className="w-full h-full object-contain"
+                />
+              </>
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-sm text-gray-400">
+                  Waiting for screen share...
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Last Update Timestamp */}
+          {screenState?.lastUpdate && (
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs text-gray-500">
+                Last updated:{' '}
+                {new Date(
+                  screenState.lastUpdate.timestamp,
+                ).toLocaleTimeString()}
               </p>
+              <Badge variant="outline" className="text-xs">
+                Click to view details
+              </Badge>
             </div>
           )}
         </div>
-  
-        {/* Last Update Timestamp */}
-        {screenState?.lastUpdate && (
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-xs text-gray-500">
-              Last updated:{' '}
-              {new Date(screenState.lastUpdate.timestamp).toLocaleTimeString()}
-            </p>
-            <Badge variant="outline" className="text-xs">
-              Click to view details
-            </Badge>
-          </div>
-        )}
-  
-        {/* Maximize/Minimize Button */}
-        <div className="absolute top-2 right-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              isStudentScreenMaximized
-                ? handleMinimizeStudentScreen()
-                : handleMaximizeStudentScreen();
-            }}
-          >
-            {isStudentScreenMaximized ? 'Minimize' : 'Maximize'}
-          </Button>
-        </div>
-      </div>
-    );
-  }, [studentScreens, isStudentScreenMaximized]);
-  
+      );
+    },
+    [studentScreens, isStudentScreenMaximized],
+  );
 
   return (
     <SidebarProvider>
@@ -748,11 +690,17 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton
-                      onClick={isScreenSharing ? handleStopScreenShare : handleStartScreenShare}
+                      onClick={
+                        isScreenSharing
+                          ? handleStopScreenShare
+                          : handleStartScreenShare
+                      }
                       className="w-full"
                     >
                       <Share className="h-4 w-4 mr-2" />
-                      <span>{isScreenSharing ? 'Stop Sharing' : 'Share Screen'}</span>
+                      <span>
+                        {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
+                      </span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
@@ -803,30 +751,6 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                   >
                     <RefreshCw className="h-4 w-4" />
                   </Button>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="flex items-center space-x-2"
-                      >
-                        <Share className="h-4 w-4" />
-                        <span>Share</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem
-                        onClick={isScreenSharing ? handleStopScreenShare : handleStartScreenShare}
-                      >
-                        <MonitorPlay className="h-4 w-4 mr-2" />
-                        {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <FileUp className="h-4 w-4 mr-2" />
-                        Share Files
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
 
                   <Dialog
                     open={isProfileDialogOpen}
@@ -978,7 +902,11 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
                       <DropdownMenuItem
-                        onClick={isScreenSharing ? handleStopScreenShare : handleStartScreenShare}
+                        onClick={
+                          isScreenSharing
+                            ? handleStopScreenShare
+                            : handleStartScreenShare
+                        }
                       >
                         <MonitorPlay className="h-4 w-4 mr-2" />
                         {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
@@ -1002,8 +930,9 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      <DropdownMenuItem>Action 1</DropdownMenuItem>
-                      <DropdownMenuItem>Action 2</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setIsWebpageDialogOpen(true)}>
+                        Launch Webpage
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
 
@@ -1241,9 +1170,18 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                     Student List
                   </h2>
                 </div>
-                <Badge variant="outline" className="text-xs">
-                  {subjectRecords.length} Students
-                </Badge>
+                <div className="flex items-center space-x-2">
+                  <Badge variant="outline" className="text-xs">
+                    {subjectRecords.length} Students
+                  </Badge>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-700">Show Screens</span>
+                    <Switch
+                      checked={showScreens}
+                      onCheckedChange={setShowScreens}
+                    />
+                  </div>
+                </div>
               </div>
 
               <Tabs defaultValue="active" className="w-full">
@@ -1258,7 +1196,11 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
 
                 <TabsContent value="active">
                   <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div
+                      className={
+                        showScreens ? 'grid grid-cols-2 gap-4' : 'space-y-2'
+                      }
+                    >
                       {subjectRecords
                         .filter((record) =>
                           activeUsers.some(
@@ -1267,9 +1209,40 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                         )
                         .map((record) => {
                           const student = studentInfo[record.userId];
-                          return student
-                            ? renderStudentScreen(record.userId, student)
-                            : null;
+                          return student ? (
+                            showScreens ? (
+                              renderStudentScreen(record.userId, student)
+                            ) : (
+                              <div
+                                key={record.id}
+                                className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
+                              >
+                                <div className="flex items-center space-x-2">
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarFallback className="text-xs">
+                                      {student?.firstName?.[0] || ''}
+                                      {student?.lastName?.[0] || ''}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <p className="text-sm font-medium">
+                                      {student?.firstName || 'Loading...'}{' '}
+                                      {student?.lastName || ''}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      ID: {student?.schoolId || 'Loading...'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs text-gray-500"
+                                >
+                                  Active
+                                </Badge>
+                              </div>
+                            )
+                          ) : null;
                         })}
                     </div>
                   </ScrollArea>
@@ -1324,7 +1297,6 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                 </TabsContent>
               </Tabs>
             </div>
-            )
             <Toaster />
             {/* Add this new Dialog component for creating a subject */}
             <Dialog
@@ -1378,7 +1350,32 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-           
+            <Dialog open={isWebpageDialogOpen} onOpenChange={setIsWebpageDialogOpen}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Launch Webpage</DialogTitle>
+                  <DialogDescription>
+                    Enter the URL of the webpage you want to launch on student devices.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="webpage-url" className="text-right">
+                      URL
+                    </Label>
+                    <Input
+                      id="webpage-url"
+                      value={webpageUrl}
+                      onChange={(e) => setWebpageUrl(e.target.value)}
+                      className="col-span-3"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button onClick={handleLaunchWebpage}>Launch</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </main>
         </div>
       </div>

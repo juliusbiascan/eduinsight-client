@@ -103,52 +103,16 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   const connection = useRef<MediaConnection | null>(null);
 
   useEffect(() => {
-    if (selectedSubject && peer) {
-      const getScreenSourceId = async () => {
-        try {
-          console.log('Fetching screen source ID...');
-          const sourceId = await api.screen.getScreenSourceId();
-          console.log('Screen source ID:', sourceId);
-          const mediaStream = await (
-            navigator.mediaDevices as any
-          ).getUserMedia({
-            audio: false,
-            video: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: sourceId,
-              },
-            },
-          });
-
-          const call = peer.call(selectedSubject.userId, mediaStream);
-          call?.on('stream', (remoteStream) => {
-            console.log('Received stream from teacher:', remoteStream);
-          });
-
-        } catch (error) {
-          console.error('Error getting screen source:', error);
-          toast({
-            title: 'Error',
-            description: 'Failed to get screen source. Please try again.',
-            variant: 'destructive',
-          });
-        }
-      };
-      getScreenSourceId();
-    }
-  }, [selectedSubject, peer]);
-
-  useEffect(() => {
-    return () => {
-      if (peer && !peer.destroyed) {
-        peer.destroy();
-      }
-    };
-  }, [peer]);
-
-  useEffect(() => {
     if (peer) {
+      peer.on("connection", (conn) => {
+        conn.on("data", (data: { type: string; url?: string }) => {
+          console.log("Received data:", data);
+          if (data.type === "webpage" && data.url) {
+            window.open(data.url, "_blank");
+          }
+        });
+      });
+      
       peer.on('call', (call) => {
         console.log('Received call from peer:', call.peer);
         if (screenStream) {
