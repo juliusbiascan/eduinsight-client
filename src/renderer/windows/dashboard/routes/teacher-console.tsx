@@ -468,19 +468,78 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   }, [showScreens]);
 
   const handleStartScreenShare = async () => {
-    //
+    try {
+      const sourceId = await api.screen.getScreenSourceId();
+      const stream = await (navigator.mediaDevices as any).getUserMedia({
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: sourceId,
+            maxWidth: 1280,
+            maxHeight: 720,
+            frameRate: { ideal: 15, max: 30 },
+          },
+        },
+      });
+
+      screenShareStream.current = stream;
+      setIsScreenSharing(true);
+
+      activeUsers.forEach((user) => {
+        if (!callConnections.current[user.userId]) {
+          const call = peer.call(user.userId, stream);
+          callConnections.current[user.userId] = call;
+          callConnections.current[user.userId]
+            .on('stream', (remoteStream: MediaStream) => {
+              handleScreenUpdate(call.peer, remoteStream);
+            })
+            .on('close', () => {
+              setStudentScreens((prev) => ({
+                ...prev,
+                [call.peer]: {
+                  ...prev[call.peer],
+                  error: 'Screen share connection closed',
+                },
+              }));
+            })
+            .on('error', (error) => {
+              console.error('Call error:', error);
+              setStudentScreens((prev) => ({
+                ...prev,
+                [call.peer]: {
+                  ...prev[call.peer],
+                  error: 'Screen share connection error',
+                },
+              }));
+            });
+        }
+      });
+
+      toast({
+        title: 'Screen Sharing Started',
+        description: 'You are now sharing your screen with students.',
+      });
+    } catch (error) {
+      console.error('Error starting screen share:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to start screen sharing. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleStopScreenShare = () => {
-    // if (screenShareStream.current) {
-    //   screenShareStream.current.getTracks().forEach((track) => track.stop());
-    //   screenShareStream.current = null;
-    //   setIsScreenSharing(false);
-    //   toast({
-    //     title: 'Screen Sharing Stopped',
-    //     description: 'You have stopped sharing your screen.',
-    //   });
-    // }
+    if (screenShareStream.current) {
+      screenShareStream.current.getTracks().forEach((track) => track.stop());
+      screenShareStream.current = null;
+      setIsScreenSharing(false);
+      toast({
+        title: 'Screen Sharing Stopped',
+        description: 'You have stopped sharing your screen.',
+      });
+    }
   };
 
   const handleLaunchWebpage = () => {
