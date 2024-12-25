@@ -30,6 +30,7 @@ export enum WindowIdentifier {
  * @enum
  */
 export enum IPCRoute {
+  OPEN_EXTERNAL_LINK = '/open_external_link',
   WINDOW_OPEN_SETUP = '/window/open-setup',
   WINDOW_CREATE_TRAY = '/window/create-tray',
   WINDOW_REMOVE_TRAY = '/window/remove-tray',

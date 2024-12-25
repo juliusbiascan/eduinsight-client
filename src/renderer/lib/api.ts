@@ -32,6 +32,7 @@ export default {
     start: () => ipcRenderer.send(IPCRoute.UPDATER_START),
   },
   window: {
+    openExternalLink: (url: string) => ipcRenderer.send(IPCRoute.OPEN_EXTERNAL_LINK, url),
     close: (id: string) => ipcRenderer.send(IPCRoute.WINDOW_CLOSE, id),
     hide: (id: string) => ipcRenderer.send(IPCRoute.WINDOW_HIDE, id),
     open: (id: string) => ipcRenderer.send(IPCRoute.WINDOW_OPEN, id),

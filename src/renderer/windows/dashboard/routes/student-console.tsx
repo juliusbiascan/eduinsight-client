@@ -108,7 +108,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
         conn.on("data", (data: { type: string; url?: string }) => {
           console.log("Received data:", data);
           if (data.type === "webpage" && data.url) {
-            window.open(data.url, "_blank");
+            api.window.openExternalLink(data.url);
           }
         });
       });

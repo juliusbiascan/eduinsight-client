@@ -3,11 +3,12 @@
  *
  * @module
  */
-import { ipcMain } from 'electron';
+import { ipcMain , shell} from 'electron';
 import { WindowManager } from '../lib';
 import { IPCRoute, WindowIdentifier } from '@/shared/constants';
 import { createTray, removeTray } from '../lib/tray-menu';
 import path from 'path';
+
 /**
  * Register the IPC event handlers.
  *
@@ -51,5 +52,7 @@ export default function () {
 
   ipcMain.on(IPCRoute.WINDOW_CREATE_TRAY, (_) => createTray(path.join(__dirname, 'img/tray-icon.ico')));
   ipcMain.on(IPCRoute.WINDOW_REMOVE_TRAY, (_) => removeTray());
-  
+  ipcMain.on(IPCRoute.OPEN_EXTERNAL_LINK, (_, url) => {
+    shell.openExternal(url);
+   });
 }
