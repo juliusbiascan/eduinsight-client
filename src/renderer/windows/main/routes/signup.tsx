@@ -70,9 +70,36 @@ const SignUpForm = () => {
         }
     };
 
+    // Modify the formatContactNumber function
+    const formatContactNumber = (value: string) => {
+        // Remove all non-numeric characters except '+'
+        let numbers = value.replace(/[^\d+]/g, '');
+        
+        // Ensure it starts with '(+63) '
+        if (!numbers.startsWith('+63')) {
+            numbers = '+63' + numbers.replace(/^0+/, '');
+        }
+
+        // Format as (+63) 9165553014
+        numbers = numbers.replace(/^(\+63)?(\d{0,10})$/, (_, p1, p2) => {
+            if (!p1) return `(+63) ${p2}`;
+            return `(+63) ${p2}`;
+        });
+
+        // Limit to '(+63) ' followed by 10 digits
+        const maxLength = 16; // (+63) and 10 digits
+        if (numbers.length > maxLength) return formData.contactNo;
+
+        return numbers;
+    };
+
+    // Modify the handleChange function
     const handleChange = (field: string, value: string) => {
         if (field === 'schoolId') {
             value = formatSchoolId(value);
+        }
+        if (field === 'contactNo') {
+            value = formatContactNumber(value);
         }
         
         setFormData(prev => ({
@@ -90,6 +117,7 @@ const SignUpForm = () => {
         }
     };
 
+    // Modify validation for contact number
     const validateForm = () => {
         const newErrors: Record<string, string> = {};
 
@@ -126,8 +154,9 @@ const SignUpForm = () => {
             newErrors.email = "Invalid email address";
         }
 
-        if (formData.contactNo.length < 10) {
-            newErrors.contactNo = "Invalid contact number";
+        const contactRegex = /^\(\+63\) \d{10}$/;
+        if (!contactRegex.test(formData.contactNo)) {
+            newErrors.contactNo = "Contact number must be in the format (+63) 9165553014";
         }
 
         setErrors(newErrors);
@@ -204,7 +233,7 @@ const SignUpForm = () => {
                             <Input
                                 id="firstName"
                                 type="text"
-                                placeholder="John"
+                                placeholder="First Name"
                                 required
                                 value={formData.firstName}
                                 onChange={(e) => handleChange('firstName', e.target.value)}
@@ -215,7 +244,7 @@ const SignUpForm = () => {
                             <Input
                                 id="lastName"
                                 type="text"
-                                placeholder="Doe"
+                                placeholder="Last Name"
                                 required
                                 value={formData.lastName}
                                 onChange={(e) => handleChange('lastName', e.target.value)}
@@ -300,7 +329,7 @@ const SignUpForm = () => {
                             <Input
                                 id="email"
                                 type="email"
-                                placeholder="john.doe@example.com"
+                                placeholder="email@example.com"
                                 required
                                 value={formData.email}
                                 onChange={(e) => handleChange('email', e.target.value)}
@@ -314,7 +343,7 @@ const SignUpForm = () => {
                             <Input
                                 id="contactNo"
                                 type="tel"
-                                placeholder="Enter your contact number"
+                                placeholder="(+63) 9165553014"
                                 required
                                 value={formData.contactNo}
                                 onChange={(e) => handleChange('contactNo', e.target.value)}

@@ -35,8 +35,7 @@ export default {
     close: (id: string) => ipcRenderer.send(IPCRoute.WINDOW_CLOSE, id),
     hide: (id: string) => ipcRenderer.send(IPCRoute.WINDOW_HIDE, id),
     open: (id: string) => ipcRenderer.send(IPCRoute.WINDOW_OPEN, id),
-    openInTray: (id: string) =>
-      ipcRenderer.send(IPCRoute.WINDOW_OPEN_IN_TRAY, id),
+
     send: <T = unknown>(id: string, data: T) =>
       ipcRenderer.send(IPCRoute.WINDOW_SEND, id, data),
     receive: <T = unknown>(
@@ -46,6 +45,10 @@ export default {
     closeSetup: () => ipcRenderer.send(IPCRoute.WINDOW_CLOSE_SETUP),
     openSetup: (data: string) =>
       ipcRenderer.send(IPCRoute.WINDOW_OPEN_SETUP, data),
+    createTray: () => ipcRenderer.send(IPCRoute.WINDOW_CREATE_TRAY),
+    openInTray: (id: string) =>
+      ipcRenderer.send(IPCRoute.WINDOW_OPEN_IN_TRAY, id),
+    removeTray: () => ipcRenderer.send(IPCRoute.WINDOW_REMOVE_TRAY),
   },
   database: {
     initialize: () => ipcRenderer.send(IPCRoute.DATABASE_INITIALIZE),
@@ -157,12 +160,16 @@ export default {
       ipcRenderer.invoke(
         IPCRoute.DATABASE_GET_SUBJECT_DATA,
         subjectId,
-      ) as Promise<Array<Subject & {
-        quizzes: Array<Quiz & { questions: QuizQuestion[] }>;
-        activities: Activity[];
-        quizRecord: QuizRecord[];
-        activityRecord: ActivityRecord[];
-      }>>,
+      ) as Promise<
+        Array<
+          Subject & {
+            quizzes: Array<Quiz & { questions: QuizQuestion[] }>;
+            activities: Activity[];
+            quizRecord: QuizRecord[];
+            activityRecord: ActivityRecord[];
+          }
+        >
+      >,
     getSubjectRecordsBySubjectId: (subjectId: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_GET_SUBJECT_RECORDS_BY_SUBJECT_ID,
@@ -257,31 +264,42 @@ export default {
         quizId,
         questions,
       ) as Promise<Quiz & { questions: QuizQuestion[] }>,
-    updateQuizQuestionsOrder: (quizId: string, questions: Array<{id: string, order: number}>) =>
+    updateQuizQuestionsOrder: (
+      quizId: string,
+      questions: Array<{ id: string; order: number }>,
+    ) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_UPDATE_QUIZ_QUESTIONS_ORDER,
         quizId,
-        questions
+        questions,
       ) as Promise<Quiz & { questions: QuizQuestion[] }>,
     getQuizRecordsByUserAndSubject: (userId: string, subjectId: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_GET_QUIZ_RECORDS_BY_USER_AND_SUBJECT,
         userId,
         subjectId,
-      ) as Promise<Array<QuizRecord & {
-        quiz: Quiz & {
-          questions: QuizQuestion[];
-        };
-      }>>,
+      ) as Promise<
+        Array<
+          QuizRecord & {
+            quiz: Quiz & {
+              questions: QuizQuestion[];
+            };
+          }
+        >
+      >,
 
     getActivityRecordsByUserAndSubject: (userId: string, subjectId: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_GET_ACTIVITY_RECORDS_BY_USER_AND_SUBJECT,
         userId,
         subjectId,
-      ) as Promise<Array<ActivityRecord & {
-        activity: Activity;
-      }>>,
+      ) as Promise<
+        Array<
+          ActivityRecord & {
+            activity: Activity;
+          }
+        >
+      >,
   },
   device: {
     init: () => ipcRenderer.send(IPCRoute.DEVICE_INITIATED),
@@ -344,12 +362,37 @@ export default {
         success: boolean;
         message: string;
       }>,
-    login: (data: { deviceId: string, email: string; password: string }) =>
+    login: (data: { deviceId: string; email: string; password: string }) =>
       ipcRenderer.invoke(IPCRoute.AUTH_LOGIN, data) as Promise<{
         success: boolean;
         message: string;
       }>,
+
+    sendOtp: async (email: string) => {
+      const response = (await ipcRenderer.invoke(IPCRoute.SEND_OTP, email)) as {
+        success: boolean;
+        message?: string;
+      };
+      if (!response.success) {
+        // Handle the error appropriately in your UI, e.g., show a toast notification
+        console.error('Failed to send OTP:', response.message);
+      }
+      return response;
+    },
+    verifyOtpAndResetPassword: (payload: {
+      email: string;
+      otp: string;
+      newPassword: string;
+    }) =>
+      ipcRenderer.invoke(
+        IPCRoute.VERIFY_OTP_AND_RESET_PASSWORD,
+        payload,
+      ) as Promise<{ success: boolean; message?: string }>,
   },
+  screen:{
+    getScreenSourceId: () => ipcRenderer.invoke(IPCRoute.SCREEN_ID) as Promise<string>,
+    stopScreenShare: () => ipcRenderer.send(IPCRoute.SCREEN_SHARE_STOP),
+  }
 };
 
 // Set up listeners for socket events

@@ -1,12 +1,13 @@
 import logo from '../../../assets/passlogo-small.png';
 import { Toaster } from '@/renderer/components/ui/toaster';
 import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 
 const MainLayout = () => {
   const navigate = useNavigate();
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const hasNavigated = useRef(false);
   
   useEffect(() => {
 
@@ -14,8 +15,10 @@ const MainLayout = () => {
       setConnectionStatus(status);
       if(status === "disconnected") {
         navigate('/server-down');
-      }else {
+        hasNavigated.current = false;
+      } else if(status === "connected" && !hasNavigated.current) {
         navigate('/');
+        hasNavigated.current = true;
       }
     });
 

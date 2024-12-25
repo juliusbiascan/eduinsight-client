@@ -31,6 +31,9 @@ export enum WindowIdentifier {
  */
 export enum IPCRoute {
   WINDOW_OPEN_SETUP = '/window/open-setup',
+  WINDOW_CREATE_TRAY = '/window/create-tray',
+  WINDOW_REMOVE_TRAY = '/window/remove-tray',
+
   GET_SOCKET_INSTANCE = '/get_socket_instance',
   CONNECTION_STATUS_UPDATE = '/connection/status-update',
   DATABASE_INITIALIZE = '/database/initialize',
@@ -99,6 +102,7 @@ export enum IPCRoute {
   DEVICE_START_MONITORING = '/device/start_monitoring',
   DEVICE_STOP_MONITORING = '/device/stop_monitoring',
 
+
   // Add these new routes
   STORE_GET = '/store/get',
   STORE_SET = '/store/set',
@@ -116,4 +120,10 @@ export enum IPCRoute {
   AUTH_REGISTER = '/auth/register',
   DATABASE_GET_QUIZ_RECORDS_BY_USER_AND_SUBJECT = '/database/get_quiz_records_by_user_and_subject',
   DATABASE_GET_ACTIVITY_RECORDS_BY_USER_AND_SUBJECT = '/database/get_activity_records_by_user_and_subject',
+
+  SEND_OTP = '/send_otp',
+  VERIFY_OTP_AND_RESET_PASSWORD = '/verify_otp_and_reset_password',
+
+  SCREEN_ID = '/screen/id',
+  SCREEN_SHARE_STOP = '/screen/share-stop',
 }

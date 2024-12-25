@@ -14,6 +14,7 @@ export { default as IPCDatabaseHandler } from './database';
 export { default as IPCQuizHandler } from './quiz';
 export { default as IPCStoreHandler } from './store'
 export { default as IPCSocketHandler } from './socket';
+export { default as IPCScreenHandler } from './screen';
 /**
  * Register the IPC event handlers.
  *

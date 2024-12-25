@@ -2,7 +2,6 @@ import '../../../styles/globals.css';
 import { useEffect, useState } from 'react';
 import { Device } from '@prisma/client';
 import { Button } from '../../../components/ui/button';
-import { useToast } from '../../../hooks/use-toast';
 import { WindowIdentifier } from '@/shared/constants';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
@@ -14,7 +13,6 @@ import { Eye, EyeOff } from 'lucide-react'; // Add import for eye icons
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [device, setDevice] = useState<Device | null>(null);
-  const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -28,15 +26,6 @@ const LoginPage: React.FC = () => {
       }
     });
   }, []);
-
-  const handleGuestMode = () => {
-    api.window.close(WindowIdentifier.Main);
-    api.window.openInTray(WindowIdentifier.Dashboard);
-    toast({
-      title: 'Guest Mode Activated',
-      description: 'You are now using the device in guest mode. ',
-    });
-  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,24 +142,7 @@ const LoginPage: React.FC = () => {
             </p>
           </div>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-[#1A1617]/70">
-                Or continue with
-              </span>
-            </div>
-          </div>
-
-          <Button
-            type="button"
-            onClick={handleGuestMode}
-            className="w-full py-4 text-lg font-semibold bg-white hover:bg-gray-50 text-[#1A1617] border border-gray-300 transition-all duration-300 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-          >
-            Guest Mode
-          </Button>
+          
         </form>
       </div>
     </motion.div>

@@ -1,8 +1,5 @@
 import { app, BrowserWindow, screen } from 'electron';
 import { WindowIdentifier } from '@/shared/constants';
-import ElectronShutdownHandler from '@paymoapp/electron-shutdown-handler';
-import { Database } from '.';
-import { machineIdSync } from 'node-machine-id';
 
 /**
  * @interface
@@ -45,6 +42,9 @@ const kioskWindowConfig: Electron.BrowserWindowConstructorOptions = {
 const baseWindowConfig: Electron.BrowserWindowConstructorOptions = {
   webPreferences: {
     preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+    nodeIntegration: true,
+    allowRunningInsecureContent: true,
+    webSecurity: false,
   },
 };
 
@@ -137,6 +137,8 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
     options: {
       ...sharedWindowConfigs.frameless,
       title: 'Splash',
+      width: 400,
+      height: 400,
     },
   },
   [WindowIdentifier.Dashboard]: {
@@ -145,13 +147,12 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
     options: {
       title: 'Dashboard',
       ...baseWindowConfig,
-      width: 800,
-      height: 700,
+      center: true,
       show: false,
       frame: false,
-      resizable: false,
+      resizable: true,
       minimizable: false,
-      maximizable: false,
+      maximizable: true,
       alwaysOnTop: true,
       skipTaskbar: true,
     },
@@ -162,8 +163,6 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
     options: {
       ...baseWindowConfig,
       title: 'Quiz Teacher',
-      width: 1080,
-      height: 800,
       center: true,
       show: true,
       frame: false,
@@ -298,34 +297,34 @@ function create(
       }
     });
   }
-  ElectronShutdownHandler.setWindowHandle(window.getNativeWindowHandle());
-  ElectronShutdownHandler.blockShutdown(
-    'Please wait for some data to be saved',
-  );
+  // ElectronShutdownHandler.setWindowHandle(window.getNativeWindowHandle());
+  // ElectronShutdownHandler.blockShutdown(
+  //   'Please wait for some data to be saved',
+  // );
 
-  ElectronShutdownHandler.on('shutdown', () => {
-    console.log('Shutting down!');
-    Database.prisma.device.findFirst({ where: { devMACaddress: machineIdSync(true) } }).then((device) => {
-      Database.prisma.deviceUser.findFirst({ where: { id: device.id } }).then((deviceUser) => { 
-        Database.prisma.activeDeviceUser
-        .deleteMany({
-          where: {
-            deviceId: device.id,
-            userId: deviceUser.id,
-          },
-        })
-        .then(() => {
-          Database.prisma.device
-            .update({ where: { id: device.id }, data: { isUsed: false } })
-            .then(() => {
-              ElectronShutdownHandler.releaseShutdown();
-              window.webContents.send('shutdown');
-              app.quit();
-            });
-        });
-      });
-    });
-  });
+  // ElectronShutdownHandler.on('shutdown', () => {
+  //   console.log('Shutting down!');
+  //   Database.prisma.device.findFirst({ where: { devMACaddress: machineIdSync(true) } }).then((device) => {
+  //     Database.prisma.deviceUser.findFirst({ where: { id: device.id } }).then((deviceUser) => {
+  //       Database.prisma.activeDeviceUser
+  //       .deleteMany({
+  //         where: {
+  //           deviceId: device.id,
+  //           userId: deviceUser.id,
+  //         },
+  //       })
+  //       .then(() => {
+  //         Database.prisma.device
+  //           .update({ where: { id: device.id }, data: { isUsed: false } })
+  //           .then(() => {
+  //             ElectronShutdownHandler.releaseShutdown();
+  //             window.webContents.send('shutdown');
+  //             app.quit();
+  //           });
+  //       });
+  //     });
+  //   });
+  // });
 
   // de-reference the window object when its closed
   window.on('closed', () => delete windows[id]);

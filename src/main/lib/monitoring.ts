@@ -14,10 +14,7 @@ function getTimeStamp() {
     today.getFullYear() + "-" + (today.getMonth() + 1) + "-" + today.getDate();
   const time =
     today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();
-  const dateTime = date + " " + time;
-
-  console.log("Generated timestamp:", dateTime);
-  return dateTime;
+  return date + " " + time;
 }
 
 let monitoringInterval: NodeJS.Timeout;
@@ -34,7 +31,6 @@ export async function startMonitoring(userId: string, deviceId: string, labId: s
   setPowerMonitor(userId, deviceId, labId);
 
   const socket = getSocketInstance();
-  console.log("Socket instance:", socket ? "obtained" : "not available");
 
   if (!userId || !deviceId || !labId) {
     console.error("User ID, device ID, and lab ID are required for monitoring.");
@@ -42,38 +38,33 @@ export async function startMonitoring(userId: string, deviceId: string, labId: s
   }
 
   const activityManager = new ActivityManager();
-  console.log("Activity manager initialized");
+  let lastTitle = ''; // Track the last window title
+  let lastUpdateTime = Date.now(); // Track last update time
 
   monitoringInterval = setInterval(async () => {
     try {
-      console.log("Attempting to get active window");
       const result = await activeWindow();
       if (result) {
-        console.log("Active window detected:", result.title);
-
-        const activity = {
-          title: result.title,
-          time: new Date(),
-          owner: result.owner.name,
-          memoryUsage: result.memoryUsage,
-        }
-
-        console.log("Saving activity:", activity);
-        const activitySaved = await activityManager.save(activity);
-
-        if (activitySaved) {
-          console.log("Activity saved successfully");
-          if (isSocketConnected()) {
-            console.log("Emitting activity update for device:", deviceId);
-            socket.emit("activity-update", deviceId);
-          } else {
-            console.log("Socket not connected, skipping activity update emission");
+        const currentTime = Date.now();
+        // Only proceed if the title is different or more than 60 seconds have passed
+        if (result.title !== lastTitle || (currentTime - lastUpdateTime) >= 60000) {
+          const activity = {
+            title: result.title,
+            time: new Date(),
+            owner: result.owner.name,
+            memoryUsage: result.memoryUsage,
           }
-        } else {
-          console.log("Failed to save activity");
+
+          const activitySaved = await activityManager.save(activity);
+
+          if (activitySaved) {
+            lastTitle = result.title;
+            lastUpdateTime = currentTime;
+            if (isSocketConnected()) {
+              socket.emit("activity-update", deviceId);
+            }
+          }
         }
-      } else {
-        console.log("No active window detected");
       }
     } catch (error) {
       console.error("Error tracking activity:", error);
@@ -102,13 +93,10 @@ async function pushPowerLogsToDB(pm_status: string, pm_log_ts: string, userId: s
         labId
       }
     });
-    console.log("Power log pushed successfully");
     
-    // Emit 'power-monitoring-update' event
     const socket = getSocketInstance();
     if (socket && isSocketConnected()) {
       socket.emit("power-monitoring-update", { deviceId });
-      console.log("Emitted 'power-monitoring-update' event");
     }
   } catch (error) {
     console.error("Error pushing power log to DB:", error);
@@ -123,44 +111,36 @@ async function pushPowerLogsToDB(pm_status: string, pm_log_ts: string, userId: s
  * @param {string} labId - The lab ID.
  */
 export function setPowerMonitor(userId: string, deviceId: string, labId: string) {
-  console.log("Setting up power monitor for:", { userId, deviceId, labId });
-
   powerMonitor.on("suspend", () => {
-    console.log("The system is going to sleep");
+    console.log("System: Sleep");
     pushPowerLogsToDB("0", getTimeStamp(), userId, deviceId, labId);
   });
 
   powerMonitor.on("resume", () => {
-    console.log("The system is resuming");
+    console.log("System: Resume");
     pushPowerLogsToDB("1", getTimeStamp(), userId, deviceId, labId);
   });
 
   powerMonitor.on("on-ac", () => {
-    console.log("The system is on AC Power (charging)");
     pushPowerLogsToDB("2", getTimeStamp(), userId, deviceId, labId);
   });
 
   powerMonitor.on("on-battery", () => {
-    console.log("The system is on Battery Power");
     pushPowerLogsToDB("3", getTimeStamp(), userId, deviceId, labId);
   });
 
   powerMonitor.on("shutdown", () => {
-    console.log("The system is Shutting Down");
+    console.log("System: Shutdown");
     pushPowerLogsToDB("4", getTimeStamp(), userId, deviceId, labId);
   });
 
   powerMonitor.on("lock-screen", () => {
-    console.log("The system is about to be locked");
     pushPowerLogsToDB("5", getTimeStamp(), userId, deviceId, labId);
   });
 
   powerMonitor.on("unlock-screen", () => {
-    console.log("The system is unlocked");
     pushPowerLogsToDB("6", getTimeStamp(), userId, deviceId, labId);
   });
-
-  console.log("Power monitor setup complete");
 }
 
 /**
@@ -168,10 +148,8 @@ export function setPowerMonitor(userId: string, deviceId: string, labId: string)
  * This function clears the interval and removes all power monitor event listeners.
  */
 export const stopPowerMonitoring = (): void => {
-  console.log("Stopping monitoring");
   if (monitoringInterval) {
     clearInterval(monitoringInterval);
-    console.log("Monitoring interval cleared");
   }
 
   powerMonitor.removeAllListeners("suspend");
@@ -181,5 +159,4 @@ export const stopPowerMonitoring = (): void => {
   powerMonitor.removeAllListeners("shutdown");
   powerMonitor.removeAllListeners("lock-screen");
   powerMonitor.removeAllListeners("unlock-screen");
-  console.log("All power monitor listeners removed");
 }

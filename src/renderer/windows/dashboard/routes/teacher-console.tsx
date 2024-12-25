@@ -1,0 +1,1387 @@
+import logo from '@/renderer/assets/passlogo-small.png';
+
+import { Button } from '@/renderer/components/ui/button';
+import { Toaster } from '@/renderer/components/ui/toaster';
+import { useToast } from '@/renderer/hooks/use-toast';
+import {
+  ActiveDeviceUser,
+  ActiveUserLogs,
+  DeviceUser,
+  Subject,
+  SubjectRecord,
+} from '@prisma/client';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { WindowIdentifier } from '@/shared/constants';
+import { formatDistance } from 'date-fns';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/renderer/components/ui/dialog';
+import { Input } from '@/renderer/components/ui/input';
+import { Label } from '@/renderer/components/ui/label';
+import { Textarea } from '@/renderer/components/ui/textarea';
+import { generateSubjectCode } from '@/shared/utils';
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from '@/renderer/components/ui/avatar';
+import {
+  LogOut,
+  PlusCircle,
+  RefreshCw,
+  Users,
+  Menu,
+  Share,
+  MonitorPlay,
+  FileUp,
+  Globe2,
+  MonitorOff,
+  AppWindow,
+  BrainCircuit,
+  PenBox,
+  Eye,
+  ChartColumn,
+  ChartColumnIncreasingIcon,
+  View,
+  BookOpen,
+  Folders,
+  Settings2Icon,
+  Trash2Icon,
+} from 'lucide-react';
+import { Badge } from '@/renderer/components/ui/badge';
+import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import { useNavigate } from 'react-router-dom';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarProvider,
+  SidebarTrigger,
+} from '@/renderer/components/ui/sidebar';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/renderer/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/renderer/components/ui/dropdown-menu';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/renderer/components/ui/tabs';
+import { Skeleton } from '@/renderer/components/ui/skeleton';
+import { MediaConnection } from 'peerjs';
+import { usePeer } from '@/renderer/components/peer-provider';
+
+interface TeacherConsoleProps {
+  user: DeviceUser & { subjects: Subject[] };
+  recentLogin: ActiveUserLogs | null;
+  handleLogout: () => void;
+}
+
+interface StudentInfo {
+  id: string;
+  firstName: string;
+  lastName: string;
+  schoolId: string;
+}
+
+interface ScreenUpdate {
+  timestamp: number;
+  data: HTMLVideoElement;
+}
+
+interface StudentScreenState {
+  [userId: string]: {
+    loading: boolean;
+    error: string | null;
+    lastUpdate: ScreenUpdate | null;
+  };
+}
+
+export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
+  user,
+  recentLogin,
+  handleLogout,
+}) => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
+  const [newSubjectName, setNewSubjectName] = useState<string>('');
+  const [newSubjectCode, setNewSubjectCode] = useState<string>('');
+  const [newSubjectDescription, setNewSubjectDescription] =
+    useState<string>('');
+  const [subjectRecords, setSubjectRecords] = useState<SubjectRecord[]>([]);
+  const [activeUsers, setActiveUsers] = useState<ActiveDeviceUser[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
+  const [isCreateSubjectDialogOpen, setIsCreateSubjectDialogOpen] =
+    useState(false);
+  const [studentInfo, setStudentInfo] = useState<Record<string, StudentInfo>>(
+    {},
+  );
+  const [selectedStudent, setSelectedStudent] = useState<StudentInfo | null>(
+    null,
+  );
+  const [studentScreens, setStudentScreens] = useState<StudentScreenState>({});
+  const [callInfo, setCallInfo] = useState<MediaConnection>();
+  const { peer } = usePeer();
+  const [isStudentScreenMaximized, setIsStudentScreenMaximized] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const connection = useRef<MediaConnection | null>(null);
+
+  const screenShareStream = useRef<MediaStream | null>(null);
+
+  const handleMaximizeStudentScreen = () => {
+    setIsStudentScreenMaximized(true);
+  };
+
+  const handleMinimizeStudentScreen = () => {
+    setIsStudentScreenMaximized(false);
+  };
+
+
+  const fetchStudentInfo = useCallback(async (userId: string) => {
+    try {
+      const student = await api.database.getDeviceUserById(userId);
+      setStudentInfo((prev) => ({
+        ...prev,
+        [userId]: {
+          id: student.id,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          schoolId: student.schoolId,
+        },
+      }));
+    } catch (error) {
+      console.error('Error fetching student info:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const fetchSubjects = () => {
+      setIsLoading(true);
+      try {
+        const fetchedSubjects = user.subjects;
+        if (fetchedSubjects && fetchedSubjects.length > 0) {
+          setSubjects(fetchedSubjects);
+          setSelectedSubject(fetchedSubjects[0]);
+        } else {
+          setSubjects([]);
+          setSelectedSubject(null);
+        }
+      } catch (error) {
+        console.error('Error fetching subjects:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch subjects. Please try again.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchSubjects();
+  }, [user.subjects, toast]); // Corrected dependency array
+
+  useEffect(() => {
+    if (newSubjectName) {
+      const code = generateSubjectCode(newSubjectName);
+      setNewSubjectCode(code);
+    } else {
+      setNewSubjectCode('');
+    }
+  }, [newSubjectName]);
+
+  const handleCreateSubject = async () => {
+    if (newSubjectName) {
+      try {
+        const newSubject = {
+          name: newSubjectName,
+          labId: user.labId,
+          userId: user.id,
+          description: newSubjectDescription,
+          subjectCode: newSubjectCode,
+        };
+
+        const createdSubject = await api.database.createSubject(newSubject);
+
+        setSubjects((prevSubjects) => [...prevSubjects, createdSubject]);
+        setSelectedSubject(createdSubject);
+        toast({
+          title: 'Subject Created',
+          description: `You've created the ${newSubjectName} subject`,
+        });
+        setNewSubjectName('');
+        setNewSubjectCode('');
+        setNewSubjectDescription('');
+        setIsCreateSubjectDialogOpen(false);
+      } catch (error) {
+        console.error('Error creating subject:', error);
+        let errorMessage = 'Failed to create subject. Please try again.';
+        if (error instanceof Error) {
+          if (error.message.includes('Unique constraint failed')) {
+            errorMessage =
+              'A subject with this code already exists. Please use a different subject code.';
+          } else {
+            errorMessage = error.message;
+          }
+        }
+        toast({
+          title: 'Error',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
+    } else {
+      toast({
+        title: 'Invalid Input',
+        description: 'Please ensure subject name is filled.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (selectedSubject) {
+      const fetchActiveUsers = async () => {
+        const subjectRecords = await api.database.getSubjectRecordsBySubjectId(
+          selectedSubject.id,
+        );
+        setSubjectRecords(subjectRecords);
+
+        const activeUsers = await api.database.getActiveUsersBySubjectId(
+          selectedSubject.id,
+        );
+        setActiveUsers(activeUsers);
+
+        // Fetch student info for all records
+        subjectRecords.forEach((record: { userId: string; }) => {
+          fetchStudentInfo(record.userId);
+        });
+      };
+      fetchActiveUsers();
+    }
+  }, [selectedSubject, fetchStudentInfo]);
+
+  // Add this new function to handle subject change
+  const handleSubjectChange = async (value: string) => {
+    const newSelectedSubject = subjects.find((s) => s.id === value) || null;
+    setSelectedSubject(newSelectedSubject);
+
+    const subjectRecords =
+      await api.database.getSubjectRecordsBySubjectId(value);
+    setSubjectRecords(subjectRecords);
+
+    const activeUsers = await api.database.getActiveUsersBySubjectId(value);
+    setActiveUsers(activeUsers);
+  };
+
+  const handleDeleteSubject = async () => {
+    if (selectedSubject) {
+      try {
+        await api.database.deleteSubject(selectedSubject.id);
+        setSubjects((prevSubjects) =>
+          prevSubjects.filter((s) => s.id !== selectedSubject.id),
+        );
+        setSelectedSubject(null);
+        toast({
+          title: 'Subject Deleted',
+          description: `You've deleted the ${selectedSubject.name} subject`,
+        });
+      } catch (error) {
+        console.error('Error deleting subject:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to delete subject. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    }
+  };
+
+  const handleCreateAssignment = (type: 'quiz' | 'activity') => {
+    if (selectedSubject) {
+      if (type === 'quiz') {
+        api.window.open(WindowIdentifier.QuizTeacher);
+        api.window.send(WindowIdentifier.QuizTeacher, {
+          subjectId: selectedSubject.id,
+        });
+      } else {
+        toast({
+          title: 'Coming Soon',
+          description:
+            'Activity creation will be available in a future update.',
+          variant: 'default',
+        });
+      }
+    } else {
+      toast({
+        title: 'Error',
+        description: 'Please select a subject before creating an assignment.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleRefresh = () => {
+    window.location.reload();
+    toast({
+      title: 'Refreshed',
+      description: 'Page content has been updated.',
+    });
+  };
+
+  const handleScreenUpdate = useCallback(
+    (userId: string, stream: MediaStream) => {
+      const videoElement = document.createElement('video');
+      videoElement.srcObject = stream;
+      videoElement.play();
+
+      setStudentScreens((prev) => ({
+        ...prev,
+        [userId]: {
+          loading: false,
+          error: null,
+          lastUpdate: {
+            timestamp: Date.now(),
+            data: videoElement,
+          },
+        },
+      }));
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (selectedSubject) {
+      // Initialize screen states for active users
+      activeUsers.forEach((user) => {
+        setStudentScreens((prev) => ({
+          ...prev,
+          [user.userId]: {
+            loading: true,
+            error: null,
+            lastUpdate: null,
+          },
+        }));
+      });
+    }
+  }, [selectedSubject, activeUsers, handleScreenUpdate]);
+
+  useEffect(() => {
+    if (callInfo) {
+      callInfo
+        .on('stream', (remoteStream: MediaStream) => {
+          handleScreenUpdate(callInfo.peer, remoteStream);
+        })
+        .on('close', () => {
+          // Handle call close
+          setStudentScreens((prev) => ({
+            ...prev,
+            [callInfo.peer]: {
+              ...prev[callInfo.peer],
+              error: 'Screen share connection closed',
+            },
+          }));
+        })
+        .on('error', (error) => {
+          // Handle call error
+          console.error('Call error:', error);
+          setStudentScreens((prev) => ({
+            ...prev,
+            [callInfo.peer]: {
+              ...prev[callInfo.peer],
+              error: 'Screen share connection error',
+            },
+          }));
+        });
+    }
+  }, [callInfo, handleScreenUpdate]);
+
+  useEffect(() => {
+    if (selectedSubject) {
+      const startScreenShare = async () => {
+        try {
+          const sourceId = await api.screen.getScreenSourceId();
+          const stream = await (navigator.mediaDevices as any).getUserMedia({
+            audio: false,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: sourceId,
+                maxWidth: 1280,
+                maxHeight: 720,
+                frameRate: { ideal: 15, max: 30 },
+              },
+            },
+          });
+
+          setScreenStream(stream);
+
+          return () => {
+            if (screenStream) {
+              screenStream.getTracks().forEach((track) => track.stop());
+              setScreenStream(null);
+            }
+            api.screen.stopScreenShare();
+          };
+        } catch (error) {
+          console.error('Error starting screen share:', error);
+          toast({
+            title: 'Screen Share Error',
+            description: 'Failed to start screen sharing',
+            variant: 'destructive',
+          });
+        }
+      };
+
+      startScreenShare();
+    }
+  }, [selectedSubject]);
+
+  useEffect(() => {
+    if (peer) {
+      peer.on('call', (call) => {
+        console.log('Received call from peer:', call.peer);
+        if (screenStream) {
+          call.answer(screenStream); // Answer the call with the screen stream
+          call.on('stream', (_remoteStream) => {
+            // Handle incoming stream
+            activeUsers.forEach(user => {
+              handleScreenUpdate(user.userId, _remoteStream);
+            });
+          });
+
+          call.on('close', () => {
+            console.log('Call closed');
+          });
+
+          connection.current = call;
+        } else {
+          console.log('No screen stream available to answer the call');
+        }
+      });
+
+      peer.on('error', (error) => {
+        console.error('PeerJS error:', error);
+      });
+    }
+  }, [screenStream, peer]);
+  
+  // Add this new useEffect to handle screen data for selected student
+  useEffect(() => {
+    if (selectedStudent) {
+      const screenState = studentScreens[selectedStudent.id];
+      if (screenState?.lastUpdate && selectedStudent) {
+        setSelectedStudent((prev) =>
+          prev
+            ? {
+                ...prev,
+                screenData: screenState.lastUpdate.data,
+              }
+            : selectedStudent,
+        );
+      }
+    }
+  }, [selectedStudent, studentScreens]);
+
+  const handleStartScreenShare = async () => {
+    try {
+      const sourceId = await api.screen.getScreenSourceId();
+      const stream = await (navigator.mediaDevices as any).getUserMedia({
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: sourceId,
+          },
+        },
+      });
+
+      screenShareStream.current = stream;
+      setIsScreenSharing(true);
+
+      activeUsers.forEach((user) => {
+        const call = peer.call(user.userId, stream);
+        setCallInfo(call);
+      });
+
+      toast({
+        title: 'Screen Sharing Started',
+        description: 'You are now sharing your screen with students.',
+      });
+    } catch (error) {
+      console.error('Error starting screen share:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to start screen sharing. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleStopScreenShare = () => {
+    if (screenShareStream.current) {
+      screenShareStream.current.getTracks().forEach((track) => track.stop());
+      screenShareStream.current = null;
+      setIsScreenSharing(false);
+
+      toast({
+        title: 'Screen Sharing Stopped',
+        description: 'You have stopped sharing your screen.',
+      });
+    }
+  };
+
+  // Update the renderStudentScreen function to include click handling
+  const renderStudentScreen = useCallback((userId: string, student: StudentInfo) => {
+    const screenState = studentScreens[userId];
+  
+    return (
+      <div
+        key={userId}
+        className={`flex flex-col p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer ${
+          isStudentScreenMaximized ? 'fixed inset-0 z-50 bg-white' : ''
+        }`}
+        onClick={() => {
+          setSelectedStudent(student);
+        }}
+      >
+        {/* Student Header */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center space-x-2">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback>
+                {student?.firstName?.[0]}
+                {student?.lastName?.[0]}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="text-sm font-medium">
+                {student?.firstName} {student?.lastName}
+              </p>
+              <p className="text-xs text-gray-500">ID: {student?.schoolId}</p>
+            </div>
+          </div>
+          <Badge variant="default" className="text-xs">
+            {screenState?.loading ? 'Connecting' : 'Active'}
+          </Badge>
+        </div>
+  
+        {/* Screen Preview */}
+        <div className="relative w-full aspect-video bg-gray-200 rounded-lg overflow-hidden group">
+          {screenState?.loading ? (
+            <Skeleton className="w-full h-full" />
+          ) : screenState?.error ? (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-red-500">{screenState.error}</p>
+            </div>
+          ) : screenState?.lastUpdate ? (
+            <>
+              <video
+                ref={(el) => {
+                  if (el) {
+                    el.srcObject = screenState.lastUpdate.data.srcObject;
+                    if (el.paused) {
+                      el.play();
+                    }
+                  }
+                }}
+                className="w-full h-full object-contain"
+              />
+              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="pointer-events-none"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Details
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-gray-400">
+                Waiting for screen share...
+              </p>
+            </div>
+          )}
+        </div>
+  
+        {/* Last Update Timestamp */}
+        {screenState?.lastUpdate && (
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-xs text-gray-500">
+              Last updated:{' '}
+              {new Date(screenState.lastUpdate.timestamp).toLocaleTimeString()}
+            </p>
+            <Badge variant="outline" className="text-xs">
+              Click to view details
+            </Badge>
+          </div>
+        )}
+  
+        {/* Maximize/Minimize Button */}
+        <div className="absolute top-2 right-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              isStudentScreenMaximized
+                ? handleMinimizeStudentScreen()
+                : handleMaximizeStudentScreen();
+            }}
+          >
+            {isStudentScreenMaximized ? 'Minimize' : 'Maximize'}
+          </Button>
+        </div>
+      </div>
+    );
+  }, [studentScreens, isStudentScreenMaximized]);
+  
+
+  return (
+    <SidebarProvider>
+      <div className="min-h-screen w-screen bg-[#EAEAEB] flex">
+        <Sidebar className="border-r bg-white w-64">
+          <SidebarHeader>
+            <div className="flex items-center space-x-2 px-4 py-4">
+              <BookOpen className="h-5 w-5 text-[#C9121F]" />
+              <h2 className="text-lg font-semibold">Class Management</h2>
+            </div>
+          </SidebarHeader>
+          <SidebarContent>
+            {/* Subjects Section */}
+            <div className="px-3 py-2">
+              <h3 className="text-sm font-medium text-gray-500 px-2 mb-2">
+                My Subjects
+              </h3>
+              <SidebarMenu>
+                {subjects.map((subject) => (
+                  <SidebarMenuItem key={subject.id}>
+                    <SidebarMenuButton
+                      isActive={selectedSubject?.id === subject.id}
+                      onClick={() => handleSubjectChange(subject.id)}
+                      className="w-full flex items-center"
+                    >
+                      <Folders className="h-4 w-4 mr-2" />
+                      <span className="truncate">{subject.name}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => setIsCreateSubjectDialogOpen(true)}
+                    className="text-muted-foreground hover:bg-gray-100 w-full"
+                  >
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    <span>Create Subject</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </div>
+
+            {/* Quick Actions Section */}
+            {selectedSubject && (
+              <div className="px-3 py-2 border-t">
+                <h3 className="text-sm font-medium text-gray-500 px-2 mb-2">
+                  Quick Actions
+                </h3>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      onClick={() => handleCreateAssignment('quiz')}
+                      className="w-full"
+                    >
+                      <PenBox className="h-4 w-4 mr-2" />
+                      <span>Begin Quiz</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      onClick={() =>
+                        selectedSubject &&
+                        navigate(`/results/quiz-results/${selectedSubject.id}`)
+                      }
+                      className="w-full"
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      <span>View Results</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </div>
+            )}
+
+            {/* Tools Section */}
+            {selectedSubject && (
+              <div className="px-3 py-2 border-t">
+                <h3 className="text-sm font-medium text-gray-500 px-2 mb-2">
+                  Tools
+                </h3>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      onClick={isScreenSharing ? handleStopScreenShare : handleStartScreenShare}
+                      className="w-full"
+                    >
+                      <Share className="h-4 w-4 mr-2" />
+                      <span>{isScreenSharing ? 'Stop Sharing' : 'Share Screen'}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton disabled className="w-full opacity-50">
+                      <MonitorOff className="h-4 w-4 mr-2" />
+                      <span>Focus Mode</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton disabled className="w-full opacity-50">
+                      <ChartColumn className="h-4 w-4 mr-2" />
+                      <span>Analytics</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </div>
+            )}
+          </SidebarContent>
+        </Sidebar>
+
+        <div className="flex-1">
+          <header className="bg-[#C9121F] border-b shadow-lg sticky top-0 z-50">
+            <div className="px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between items-center h-16">
+                <div className="flex items-center space-x-4">
+                  <SidebarTrigger className="text-white hover:bg-[#EBC42E]/20">
+                    <Menu className="h-5 w-5" />
+                  </SidebarTrigger>
+                  <img
+                    src={logo}
+                    alt="PASS College Logo"
+                    className="h-10 w-auto"
+                  />
+                  <div>
+                    <h1 className="text-xl font-semibold text-white">
+                      EduInsight
+                    </h1>
+                    <p className="text-sm text-[#EBC42E]">Teacher Console</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRefresh}
+                    className="text-white hover:bg-[#EBC42E]/20"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="flex items-center space-x-2"
+                      >
+                        <Share className="h-4 w-4" />
+                        <span>Share</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem
+                        onClick={isScreenSharing ? handleStopScreenShare : handleStartScreenShare}
+                      >
+                        <MonitorPlay className="h-4 w-4 mr-2" />
+                        {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <FileUp className="h-4 w-4 mr-2" />
+                        Share Files
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  <Dialog
+                    open={isProfileDialogOpen}
+                    onOpenChange={setIsProfileDialogOpen}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="flex items-center space-x-2"
+                      >
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={'/default-avatar.png'} />
+                          <AvatarFallback>
+                            {user.firstName[0]}
+                            {user.lastName[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="hidden md:inline text-white">
+                          {user.firstName} {user.lastName}
+                        </span>
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[425px]">
+                      <DialogHeader>
+                        <DialogTitle className="text-2xl font-bold text-[#C9121F]">
+                          Teacher Profile
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="pt-4">
+                        <div className="flex items-center justify-center mb-6">
+                          <Avatar className="h-24 w-24">
+                            <AvatarImage src={'/default-avatar.png'} />
+                            <AvatarFallback className="text-2xl">
+                              {user.firstName[0]}
+                              {user.lastName[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
+                        <div className="space-y-4">
+                          <div className="bg-gray-50 p-4 rounded-lg">
+                            <h3 className="text-sm font-medium text-gray-500 mb-2">
+                              Personal Information
+                            </h3>
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-sm text-gray-600">
+                                  Full Name:
+                                </span>
+                                <span className="text-sm font-medium">
+                                  {user.firstName} {user.lastName}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-sm text-gray-600">
+                                  Teacher ID:
+                                </span>
+                                <span className="text-sm font-medium">
+                                  {user.schoolId}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-sm text-gray-600">
+                                  Department:
+                                </span>
+                                <span className="text-sm font-medium">
+                                  {user.course}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-50 p-4 rounded-lg">
+                            <h3 className="text-sm font-medium text-gray-500 mb-2">
+                              System Access
+                            </h3>
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-sm text-gray-600">
+                                  Last Login:
+                                </span>
+                                <span className="text-sm font-medium">
+                                  {recentLogin
+                                    ? formatDistance(
+                                        new Date(recentLogin.createdAt),
+                                        new Date(),
+                                        { addSuffix: true },
+                                      )
+                                    : 'No recent login'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-sm text-gray-600">
+                                  Subjects:
+                                </span>
+                                <span className="text-sm font-medium">
+                                  {subjects.length} active
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => setIsProfileDialogOpen(false)}
+                        >
+                          Close
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleLogout}
+                    className="text-white hover:bg-[#EBC42E]/20"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <div className="bg-white border-b">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between items-center h-14">
+                <div className="flex space-x-4">
+                  {/* Share Button */}
+                  <Button
+                    disabled
+                    variant="ghost"
+                    className="flex items-center space-x-2"
+                  >
+                    <View className="h-4 w-4" />
+                    <span>Remote</span>
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="flex items-center space-x-2"
+                      >
+                        <Share className="h-4 w-4" />
+                        <span>Share</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem
+                        onClick={isScreenSharing ? handleStopScreenShare : handleStartScreenShare}
+                      >
+                        <MonitorPlay className="h-4 w-4 mr-2" />
+                        {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <FileUp className="h-4 w-4 mr-2" />
+                        Share Files
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Actions Button */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="flex items-center space-x-2"
+                      >
+                        <Globe2 className="h-4 w-4" />
+                        <span>Actions</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem>Action 1</DropdownMenuItem>
+                      <DropdownMenuItem>Action 2</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Assess Button */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="flex items-center space-x-2"
+                      >
+                        <BrainCircuit className="h-4 w-4" />
+                        <span>Assess</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem
+                        onClick={() => handleCreateAssignment('quiz')}
+                      >
+                        <PenBox className="h-4 w-4 mr-2" />
+                        Begin a Quiz
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <Eye className="h-4 w-4 mr-2" />
+                        Manage Quiz
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          selectedSubject &&
+                          navigate(
+                            `/results/quiz-results/${selectedSubject.id}`,
+                          )
+                        }
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        View Quiz Result
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Focus Button */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="flex items-center space-x-2"
+                      >
+                        <MonitorOff className="h-4 w-4" />
+                        <span>Focus</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem>
+                        <Globe2 className="h-4 w-4 mr-2" />
+                        Limit Web
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <AppWindow className="h-4 w-4 mr-2" />
+                        Limit Apps
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Analytics */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="flex items-center space-x-2"
+                      >
+                        <ChartColumnIncreasingIcon className="h-4 w-4" />
+                        <span>Analytics</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          selectedSubject &&
+                          navigate(
+                            `/analytics/student-progress/${selectedSubject.id}`,
+                          )
+                        }
+                      >
+                        <ChartColumn className="h-4 w-4 mr-2" />
+                        See Students Performance
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {selectedSubject && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className="flex items-center space-x-2"
+                        >
+                          <Settings2Icon className="h-4 w-4" />
+                          <span>Settings</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+
+                      <DropdownMenuContent>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <DropdownMenuItem
+                              onSelect={(e) => e.preventDefault()}
+                            >
+                              <Trash2Icon className="h-4 w-4 mr-2" />
+                              Delete Subject
+                            </DropdownMenuItem>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="max-w-[425px]">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>
+                                Delete Subject
+                              </AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete{' '}
+                                {selectedSubject.name}? This will remove all
+                                associated data, including quizzes and student
+                                records. This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter className="gap-2">
+                              <AlertDialogCancel className="mt-2">
+                                Cancel
+                              </AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={handleDeleteSubject}
+                                className="bg-red-600 hover:bg-red-700 text-white mt-2"
+                              >
+                                Delete Subject
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <main className="px-4 sm:px-6 lg:px-8 py-4 relative h-[calc(100vh-8rem)] overflow-y-auto">
+            {isLoading ? (
+              // Loading state
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#C9121F] mx-auto mb-4"></div>
+                  <p className="text-gray-500">Loading subjects...</p>
+                </div>
+              </div>
+            ) : !selectedSubject ? (
+              // No subject selected state
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center max-w-md">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    No Subject Selected
+                  </h3>
+                  <p className="text-gray-500 mb-4">
+                    {subjects.length === 0
+                      ? 'Create a new subject to get started with managing your class.'
+                      : 'Select a subject from the sidebar to view its details and manage your class.'}
+                  </p>
+                  <Button
+                    onClick={() => setIsCreateSubjectDialogOpen(true)}
+                    className="inline-flex items-center"
+                  >
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    Create New Subject
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              // Existing subject view content
+              <div className="grid gap-4">
+                {/* Combined Subject Details and Statistics Card */}
+                <div className="bg-white rounded-lg shadow p-4 border-l-4 border-[#C9121F]">
+                  <div className="flex justify-between gap-4">
+                    {/* Subject Details - Made more compact */}
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h2 className="text-xl font-bold text-gray-900">
+                            {selectedSubject.name}
+                          </h2>
+                          <p className="text-xs text-blue-700">
+                            Code: {selectedSubject.subjectCode}
+                          </p>
+                          <p className="text-xs text-gray-600 line-clamp-2">
+                            {selectedSubject.description}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Statistics - Made more compact */}
+                    <div className="flex-1 border-l pl-4">
+                      <h3 className="text-sm font-semibold text-blue-900 mb-2">
+                        Class Statistics
+                      </h3>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-gray-50 rounded p-2 text-center">
+                          <p className="text-lg font-bold text-blue-600">
+                            {activeUsers.length}
+                          </p>
+                          <p className="text-xs text-gray-600">Active</p>
+                        </div>
+                        <div className="bg-gray-50 rounded p-2 text-center">
+                          <p className="text-lg font-bold text-green-600">
+                            {subjectRecords.length}
+                          </p>
+                          <p className="text-xs text-gray-600">Total</p>
+                        </div>
+                        <div className="bg-gray-50 rounded p-2 text-center">
+                          <p className="text-lg font-bold text-amber-600">
+                            {subjectRecords.length > 0
+                              ? `${((activeUsers.length / subjectRecords.length) * 100).toFixed(0)}%`
+                              : '0%'}
+                          </p>
+                          <p className="text-xs text-gray-600">Rate</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Student List - Adjusted height */}
+            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-[#EBC42E] flex-1">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center space-x-2">
+                  <Users className="h-4 w-4 text-gray-700" />
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Student List
+                  </h2>
+                </div>
+                <Badge variant="outline" className="text-xs">
+                  {subjectRecords.length} Students
+                </Badge>
+              </div>
+
+              <Tabs defaultValue="active" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="active">
+                    Active ({activeUsers.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="inactive">
+                    Inactive ({subjectRecords.length - activeUsers.length})
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="active">
+                  <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
+                    <div className="grid grid-cols-2 gap-4">
+                      {subjectRecords
+                        .filter((record) =>
+                          activeUsers.some(
+                            (user) => user.userId === record.userId,
+                          ),
+                        )
+                        .map((record) => {
+                          const student = studentInfo[record.userId];
+                          return student
+                            ? renderStudentScreen(record.userId, student)
+                            : null;
+                        })}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+
+                <TabsContent value="inactive">
+                  <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
+                    <div className="space-y-2">
+                      {subjectRecords
+                        .filter(
+                          (record) =>
+                            !activeUsers.some(
+                              (user) => user.userId === record.userId,
+                            ),
+                        )
+                        .map((record) => {
+                          const student = studentInfo[record.userId];
+
+                          return (
+                            <div
+                              key={record.id}
+                              className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
+                            >
+                              <div className="flex items-center space-x-2">
+                                <Avatar className="h-6 w-6">
+                                  <AvatarFallback className="text-xs">
+                                    {student?.firstName?.[0] || ''}
+                                    {student?.lastName?.[0] || ''}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <p className="text-sm font-medium">
+                                    {student?.firstName || 'Loading...'}{' '}
+                                    {student?.lastName || ''}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    ID: {student?.schoolId || 'Loading...'}
+                                  </p>
+                                </div>
+                              </div>
+                              <Badge
+                                variant="outline"
+                                className="text-xs text-gray-500"
+                              >
+                                Inactive
+                              </Badge>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
+            </div>
+            )
+            <Toaster />
+            {/* Add this new Dialog component for creating a subject */}
+            <Dialog
+              open={isCreateSubjectDialogOpen}
+              onOpenChange={setIsCreateSubjectDialogOpen}
+            >
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Create New Subject</DialogTitle>
+                  <DialogDescription>
+                    Enter the details of the new subject you want to create.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="name" className="text-right">
+                      Name
+                    </Label>
+                    <Input
+                      id="name"
+                      value={newSubjectName}
+                      onChange={(e) => setNewSubjectName(e.target.value)}
+                      className="col-span-3"
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="code" className="text-right">
+                      Code
+                    </Label>
+                    <Input
+                      id="code"
+                      value={newSubjectCode}
+                      readOnly
+                      className="col-span-3 bg-gray-100"
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="description" className="text-right">
+                      Description
+                    </Label>
+                    <Textarea
+                      id="description"
+                      value={newSubjectDescription}
+                      onChange={(e) => setNewSubjectDescription(e.target.value)}
+                      className="col-span-3"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button onClick={handleCreateSubject}>Create Subject</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+           
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+};

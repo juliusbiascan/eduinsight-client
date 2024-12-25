@@ -102,21 +102,21 @@ function Splash() {
   };
 
   return (
-    <div className="flex items-center justify-center h-screen bg-gradient-to-r from-blue-900 to-purple-900 overflow-hidden">
-      <div className="text-center space-y-8 p-8 bg-white bg-opacity-10 rounded-xl backdrop-filter backdrop-blur-lg">
+    <div className="flex items-center justify-center min-h-screen bg-white">
+      <div className="text-center space-y-6 p-6 bg-white rounded-lg shadow-lg">
         <img
           src={logo}
           alt="SMNHS Logo"
-          className="w-32 h-32 mx-auto animate-pulse"
+          className="w-24 h-24 mx-auto"
         />
-        <h1 className="text-4xl font-bold text-white">{status}</h1>
-        <div className="relative w-64 h-3 bg-gray-200 rounded-full overflow-hidden">
+        <h1 className="text-2xl font-semibold text-gray-800">{status}</h1>
+        <div className="relative w-48 h-2 bg-gray-200 rounded-full overflow-hidden">
           <div
-            className="absolute top-0 left-0 h-full bg-blue-500 transition-all duration-300 ease-out"
+            className="absolute top-0 left-0 h-full bg-blue-500 transition-width duration-300 ease-out"
             style={{ width: `${progress}%` }}
           ></div>
         </div>
-        <p className="text-white text-opacity-80">{`${progress}%`}</p>
+        <p className="text-gray-700">{`${progress}%`}</p>
       </div>
     </div>
   );

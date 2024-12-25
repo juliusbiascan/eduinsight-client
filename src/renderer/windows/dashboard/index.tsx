@@ -8,8 +8,8 @@ import { useEffect, useState } from "react";
 import { ActiveUserLogs, Device, DeviceUser, Subject } from "@prisma/client";
 import { useToast } from "@/renderer/hooks/use-toast";
 import { WindowIdentifier } from "@/shared/constants";
-import { StudentView } from "./routes/student-view";
-import { TeacherView } from "./routes/teacher-view";
+import { StudentConsole} from "./routes/student-console";
+import { TeacherConsole } from "./routes/teacher-console";
 import StudentProgressReport from "./routes/analytics/student-progress";
 import StudentQuizResults from "./routes/results/quiz-results";
 
@@ -85,8 +85,8 @@ function Index() {
     <Routes>
       <Route path="/" element={<DashboardLayout />}>
         <Route index element={<GuestView />} />
-        <Route path="student" element={<StudentView user={user} handleLogout={handleLogout} />} />
-        <Route path="teacher" element={<TeacherView user={user} recentLogin={recentLogin} handleLogout={handleLogout} />} />
+        <Route path="student" element={<StudentConsole user={user} handleLogout={handleLogout} />} />
+        <Route path="teacher" element={<TeacherConsole user={user} recentLogin={recentLogin} handleLogout={handleLogout} />} />
         <Route path="analytics/student-progress/:id" element={<StudentProgressReport />} />
         <Route path="results/quiz-results/:id" element={<StudentQuizResults />} />
       </Route>

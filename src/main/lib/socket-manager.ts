@@ -24,7 +24,7 @@ export function createSocketConnection(url?: string): Promise<Socket> {
       rejectUnauthorized: false,
       transports: ['polling', 'websocket'], // Try polling first, then websocket
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity, // Changed from 5 to Infinity
       reconnectionDelay: 1000,
       timeout: 20000,
       forceNew: true,

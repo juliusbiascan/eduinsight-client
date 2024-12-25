@@ -1,12 +1,14 @@
-import { Toaster } from "@/renderer/components/ui/toaster";
-import { useToast } from "@/renderer/hooks/use-toast";
-import { DeviceUserRole } from "@prisma/client";
-import { useEffect, useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { PeerProvider } from '@/renderer/components/peer-provider';
+import { Toaster } from '@/renderer/components/ui/toaster';
+import { useToast } from '@/renderer/hooks/use-toast';
+import { DeviceUser, DeviceUserRole } from '@prisma/client';
+import { useEffect, useState } from 'react';
+import { Outlet, useNavigate } from 'react-router-dom';
 
 const DashboardLayout = () => {
+  const [user, setUser] = useState<DeviceUser>()
   const [loading, setLoading] = useState(true);
-  const { toast } = useToast()
+  const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -14,22 +16,29 @@ const DashboardLayout = () => {
       try {
         const devices = await api.database.getDevice();
         if (devices && devices.length > 0) {
-          const activeUsers = await api.database.getActiveUserByDeviceId(devices[0].id, devices[0].labId);
+          const activeUsers = await api.database.getActiveUserByDeviceId(
+            devices[0].id,
+            devices[0].labId,
+          );
           if (activeUsers && activeUsers.length > 0) {
-            const users = await api.database.getDeviceUserByActiveUserId(activeUsers[0].userId);
+            const users = await api.database.getDeviceUserByActiveUserId(
+              activeUsers[0].userId,
+            );
             if (users && users.length > 0) {
+
               if (users[0].role === DeviceUserRole.STUDENT) {
-                navigate("/student");
+                navigate('/student');
               } else if (users[0].role === DeviceUserRole.TEACHER) {
-                navigate("/teacher");
-              }else{
-                navigate("/guest");
+                navigate('/teacher');
+              } else {
+                navigate('/guest');
               }
+              setUser(users[0]);
             }
           }
         }
       } catch (error) {
-        navigate("/guest");
+        navigate('/guest');
       } finally {
         setLoading(false);
       }
@@ -49,8 +58,10 @@ const DashboardLayout = () => {
   }
 
   return (
-    <Outlet />
+    <PeerProvider userId={user.id}>
+      <Outlet />
+    </PeerProvider>
   );
-}
+};
 
 export default DashboardLayout;

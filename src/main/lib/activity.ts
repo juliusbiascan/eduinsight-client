@@ -52,7 +52,7 @@ class ActivityManager {
           deviceId: this.deviceId,
         }
       });
-      return newActivity ? true : false;
+      return !!newActivity;
     }
     return false;
   }
