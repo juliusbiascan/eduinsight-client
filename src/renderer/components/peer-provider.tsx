@@ -19,18 +19,18 @@ export const PeerProvider: React.FC<PeerProviderProps> = ({ userId, children }) 
   const [peer, setPeer] = useState<Peer | null>(null);
   const peerRef = useRef<Peer | null>(null);
 
-  const peerOptions: PeerOptions = {
-    host: "192.168.1.82",
-    port: 4000,
-    path: "/peerjs/peerjs",
-    secure: true,
-    key: "jlzk21dev",
-  };
+  // const peerOptions: PeerOptions = {
+  //   host: "192.168.1.82",
+  //   port: 4000,
+  //   path: "/peerjs/peerjs",
+  //   secure: true,
+  //   key: "jlzk21dev",
+  // };
 
   useEffect(() => {
     if (!peerRef.current) {
-      console.log('Initializing PeerJS with options:', peerOptions);
-      const peer = new Peer(userId, peerOptions);
+      console.log('Initializing PeerJS with options:');
+      const peer = new Peer(userId);
       peerRef.current = peer;
 
       peer.on('open', (id: string) => {
