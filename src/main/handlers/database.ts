@@ -239,13 +239,7 @@ export default function () {
                 questions: true,
               },
             },
-            activities: {
-              where: {
-                published: true,
-              },
-            },
             quizRecord: true,
-            activityRecord: true,
           },
         });
         return subject ? [subject] : [];
@@ -298,9 +292,7 @@ export default function () {
         where: { id: { in: subjectRecords.map((record) => record.subjectId) } },
         include: {
           quizzes: true,
-          activities: true,
           quizRecord: true,
-          activityRecord: true,
         },
       });
       return subjects;
@@ -667,28 +659,6 @@ export default function () {
     },
   );
 
-  ipcMain.handle(
-    IPCRoute.DATABASE_GET_ACTIVITY_RECORDS_BY_USER_AND_SUBJECT,
-    async (_e, userId: string, subjectId: string) => {
-      try {
-        return await Database.prisma.activityRecord.findMany({
-          where: {
-            userId,
-            subjectId,
-          },
-          include: {
-            activity: true,
-          },
-          orderBy: {
-            completedAt: 'desc',
-          },
-        });
-      } catch (error) {
-        console.error('Error fetching activity records:', error);
-        return [];
-      }
-    },
-  );
 
   ipcMain.handle(IPCRoute.AUTH_REGISTER, async (_, data) => {
     try {

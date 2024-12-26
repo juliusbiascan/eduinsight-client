@@ -157,24 +157,6 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
       skipTaskbar: true,
     },
   },
-  [WindowIdentifier.QuizTeacher]: {
-    id: WindowIdentifier.QuizTeacher,
-    url: QUIZ_TEACHER_WINDOW_WEBPACK_ENTRY,
-    options: {
-      ...baseWindowConfig,
-      title: 'Quiz Teacher',
-      center: true,
-      show: true,
-      frame: false,
-      skipTaskbar: false,
-      useContentSize: true,
-      webPreferences: {
-        ...baseWindowConfig.webPreferences,
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    },
-  },
   [WindowIdentifier.QuizPlayer]: {
     id: WindowIdentifier.QuizPlayer,
     url: QUIZ_PLAYER_WINDOW_WEBPACK_ENTRY,

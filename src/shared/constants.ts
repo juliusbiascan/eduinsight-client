@@ -19,8 +19,6 @@ export enum WindowIdentifier {
   SomethingWentWrong = 'sww_window',
   Logout = 'logout_window',
   Splash = 'splash_window',
-  QuizTeacher = 'quiz_teacher_window',
-  ActivityTeacher = 'activity_teacher_window',
   QuizPlayer = 'quiz_player_window',
 }
 
@@ -120,7 +118,6 @@ export enum IPCRoute {
   AUTH_LOGIN = '/auth/login',
   AUTH_REGISTER = '/auth/register',
   DATABASE_GET_QUIZ_RECORDS_BY_USER_AND_SUBJECT = '/database/get_quiz_records_by_user_and_subject',
-  DATABASE_GET_ACTIVITY_RECORDS_BY_USER_AND_SUBJECT = '/database/get_activity_records_by_user_and_subject',
 
   SEND_OTP = '/send_otp',
   VERIFY_OTP_AND_RESET_PASSWORD = '/verify_otp_and_reset_password',

@@ -228,8 +228,6 @@ model Subject {
   user           DeviceUser       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   quizzes        Quiz[]
   quizRecord     QuizRecord[]
-  activities     Activity[]
-  activityRecord ActivityRecord[]
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 }
@@ -285,31 +283,4 @@ model QuizRecord {
   completedAt    DateTime
   createdAt      DateTime @default(now())
   updatedAt      DateTime @default(now())
-}
-
-model Activity {
-  id             String           @id @default(uuid())
-  subjectId      String
-  userId         String
-  labId          String
-  name           String
-  description    String
-  published      Boolean          @default(false)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  subject        Subject          @relation(fields: [subjectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  activityRecord ActivityRecord[]
-}
-
-model ActivityRecord {
-  id          String   @id @default(uuid())
-  activityId  String
-  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  userId      String
-  completed   Boolean  @default(false)
-  completedAt DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  subject     Subject  @relation(fields: [subjectId], references: [id])
-  subjectId   String
 }

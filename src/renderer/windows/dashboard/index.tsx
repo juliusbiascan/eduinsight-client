@@ -12,6 +12,9 @@ import { StudentConsole} from "./routes/student-console";
 import { TeacherConsole } from "./routes/teacher-console";
 import StudentProgressReport from "./routes/analytics/student-progress";
 import StudentQuizResults from "./routes/results/quiz-results";
+import QuizLibrary from "./routes/quiz/quiz-library";
+import QuizManager from "./routes/quiz/quiz-manager";
+import QuizQuestions from "./routes/quiz/quiz-questions";
 
 
 function Index() {
@@ -89,6 +92,9 @@ function Index() {
         <Route path="teacher" element={<TeacherConsole user={user} recentLogin={recentLogin} handleLogout={handleLogout} />} />
         <Route path="analytics/student-progress/:id" element={<StudentProgressReport />} />
         <Route path="results/quiz-results/:id" element={<StudentQuizResults />} />
+        <Route path="quiz/library/:id" element={<QuizLibrary />} />
+        <Route path="quiz/manager" element={<QuizManager />} />
+        <Route path="quiz/questions" element={<QuizQuestions />} />
       </Route>
     </Routes>
     <Toaster />

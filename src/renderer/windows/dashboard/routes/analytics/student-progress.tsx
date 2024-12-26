@@ -11,13 +11,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/renderer/components/ui/table";
-import { ChevronLeft, GraduationCap, BookOpen, Trophy, Download } from "lucide-react";
+import { ChevronLeft, GraduationCap, BookOpen, Download } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "@/renderer/hooks/use-toast";
 import * as XLSX from 'xlsx';
 import { Dialog, DialogTrigger } from "@/renderer/components/ui/dialog";
 import { AssessmentDialog } from "./assessment-dialog";
-import { Activity, ActivityRecord, Quiz, QuizQuestion, QuizRecord, Subject } from "@prisma/client";
+import { Quiz, QuizQuestion, QuizRecord, Subject } from "@prisma/client";
 
 // Types based on Prisma schema
 interface QuizDetail {
@@ -28,26 +28,10 @@ interface QuizDetail {
   completedAt: Date;
 }
 
-// Add new interface for activity details
-interface ActivityDetail {
-  id: string;
-  name: string;
-  description: string;
-  completedAt: Date;
-  status: boolean;
-}
-
 interface PendingQuiz {
   id: string;
   title: string;
   totalQuestions: number;
-  dueDate?: Date;
-}
-
-interface PendingActivity {
-  id: string;
-  name: string;
-  description: string;
   dueDate?: Date;
 }
 
@@ -60,13 +44,6 @@ interface StudentProgress {
     totalQuestions: number;
     details: QuizDetail[]; // Add this new property
     pending: PendingQuiz[];
-  };
-  activities: {
-    completed: number;
-    totalActivities: number;
-    completionRate: number;
-    details: ActivityDetail[]; // Add this new property
-    pending: PendingActivity[];
   };
   overallProgress: number;
 }
@@ -86,23 +63,10 @@ interface ExtendedQuizRecord {
   completedAt: Date;
 }
 
-interface ExtendedActivityRecord {
-  activityId: string;
-  activity: {
-    id: string;
-    name: string;
-    description: string;
-  };
-  completed: boolean;
-  completedAt: Date;
-}
-
 // Add interface for the extended Subject type that includes relations
 interface ExtendedSubject extends Subject {
   quizzes: Array<Quiz & { questions: QuizQuestion[] }>;
-  activities: Activity[];
   quizRecord: QuizRecord[];
-  activityRecord: ActivityRecord[];
 }
 
 const StudentProgressReport = () => {
@@ -124,12 +88,10 @@ const StudentProgressReport = () => {
 
         if (!subject) throw new Error('Subject not found');
 
-        // Get all quiz and activity records with proper filtering and type casting
+        // Get all quiz records with proper filtering and type casting
         const quizRecords = (await api.database.getQuizRecordsByUserAndSubject(record.userId, id)) as ExtendedQuizRecord[];
-        const activityRecords = (await api.database.getActivityRecordsByUserAndSubject(record.userId, id)) as ExtendedActivityRecord[];
 
         const publishedQuizzes = subject.quizzes?.filter(quiz => quiz.published) || [];
-        const publishedActivities = subject.activities?.filter(activity => activity.published) || [];
 
         // Calculate statistics with null checks
         const completedQuizzes = quizRecords?.length || 0;
@@ -138,20 +100,15 @@ const StudentProgressReport = () => {
           ? (quizRecords.reduce((sum, record) => sum + record.score, 0) / completedQuizzes)
           : 0;
 
-        const completedActivities = activityRecords?.filter(record => record.completed)?.length || 0;
-
         // Calculate progress with null checks
         const quizProgress = publishedQuizzes.length > 0 
           ? (completedQuizzes / publishedQuizzes.length) * 100 
           : 0;
-        const activityProgress = publishedActivities.length > 0 
-          ? (completedActivities / publishedActivities.length) * 100 
-          : 0;
 
         // Calculate overall progress with weighted average
-        const totalItems = publishedQuizzes.length + publishedActivities.length;
+        const totalItems = publishedQuizzes.length;
         const overallProgress = totalItems === 0 ? 0 : (
-          (quizProgress * publishedQuizzes.length + activityProgress * publishedActivities.length) / totalItems
+          (quizProgress * publishedQuizzes.length) / totalItems
         );
 
         // Prepare quiz details with proper type checking
@@ -163,15 +120,6 @@ const StudentProgressReport = () => {
           completedAt: record.completedAt
         })) || [];
 
-        // Prepare activity details with proper type checking
-        const activityDetails = activityRecords?.map(record => ({
-          id: record.activityId,
-          name: record.activity?.name || 'Unknown Activity',
-          description: record.activity?.description || '',
-          completedAt: record.completedAt,
-          status: record.completed
-        })) || [];
-
         // Get pending items with proper type checking
         const pendingQuizzes = publishedQuizzes
           .filter((quiz: { id: string; }) => !quizRecords?.some(r => r.quizId === quiz.id))
@@ -179,14 +127,6 @@ const StudentProgressReport = () => {
             id: quiz.id,
             title: quiz.title,
             totalQuestions: quiz.questions?.length || 0,
-          }));
-
-        const pendingActivities = publishedActivities
-          .filter((activity: { id: string; }) => !activityRecords?.some(r => r.activityId === activity.id))
-          .map((activity: { id: any; name: any; description: any; }) => ({
-            id: activity.id,
-            name: activity.name,
-            description: activity.description,
           }));
 
         return {
@@ -199,13 +139,6 @@ const StudentProgressReport = () => {
             totalQuestions,
             details: quizDetails,
             pending: pendingQuizzes,
-          },
-          activities: {
-            completed: completedActivities,
-            totalActivities: publishedActivities.length,
-            completionRate: Math.round(activityProgress * 100) / 100,
-            details: activityDetails,
-            pending: pendingActivities,
           },
           overallProgress: Math.round(overallProgress * 100) / 100
         };
@@ -272,8 +205,6 @@ const StudentProgressReport = () => {
         'Student Name': student.studentName,
         'Quiz Average': `${student.quizzes.averageScore}%`,
         'Quizzes Completed': `${student.quizzes.completed}/${student.quizzes.completed + student.quizzes.pending.length}`,
-        'Activities Completion': `${student.activities.completionRate}%`,
-        'Activities Status': `${student.activities.completed}/${student.activities.totalActivities}`,
         'Overall Progress': `${student.overallProgress}%`,
         'Overall Status': student.overallProgress >= 90 ? 'Excellent' :
           student.overallProgress >= 75 ? 'Good' : 'Needs Improvement'
@@ -330,7 +261,6 @@ const StudentProgressReport = () => {
   // Calculate class averages
   const classAverages = {
     quizAverage: progressData.reduce((acc, curr) => acc + curr.quizzes.averageScore, 0) / progressData.length,
-    activityCompletion: progressData.reduce((acc, curr) => acc + curr.activities.completionRate, 0) / progressData.length,
     overallProgress: progressData.reduce((acc, curr) => acc + curr.overallProgress, 0) / progressData.length,
   };
 
@@ -414,19 +344,6 @@ const StudentProgressReport = () => {
             <p className="text-xs text-gray-500">Average Quiz Score</p>
           </CardContent>
         </Card>
-
-        <Card className="bg-white border-l-4 border-purple-500">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium">Activity Completion</CardTitle>
-            <Trophy className="h-5 w-5 text-purple-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
-              {classAverages.activityCompletion.toFixed(1)}%
-            </div>
-            <p className="text-xs text-gray-500">Completion Rate</p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Student Progress Table */}
@@ -440,7 +357,6 @@ const StudentProgressReport = () => {
               <TableRow>
                 <TableHead>Student</TableHead>
                 <TableHead>Quiz Performance</TableHead>
-                <TableHead>Activities</TableHead>
                 <TableHead>Overall Progress</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Actions</TableHead>
@@ -457,16 +373,6 @@ const StudentProgressReport = () => {
                       </span>
                       <span className="text-xs text-gray-500">
                         {student.quizzes.completed} quizzes
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className={getProgressColor(student.activities.completionRate)}>
-                        {student.activities.completionRate}%
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {student.activities.completed}/{student.activities.totalActivities} completed
                       </span>
                     </div>
                   </TableCell>

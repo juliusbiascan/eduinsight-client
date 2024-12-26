@@ -10,7 +10,7 @@ import {
     TableRow,
   } from "@/renderer/components/ui/table";
 import { Badge } from "@/renderer/components/ui/badge";
-import { exportToExcel, formatQuizzesForExport, formatActivitiesForExport } from "@/renderer/utils/excel-export";
+import { exportToExcel, formatQuizzesForExport } from "@/renderer/utils/excel-export";
 import { Button } from "@/renderer/components/ui/button";
   
 interface QuizDetail {
@@ -21,26 +21,10 @@ interface QuizDetail {
   completedAt: Date;
 }
 
-// Add new interface for activity details
-interface ActivityDetail {
-  id: string;
-  name: string;
-  description: string;
-  completedAt: Date;
-  status: boolean;
-}
-
 interface PendingQuiz {
   id: string;
   title: string;
   totalQuestions: number;
-  dueDate?: Date;
-}
-
-interface PendingActivity {
-  id: string;
-  name: string;
-  description: string;
   dueDate?: Date;
 }
 
@@ -53,13 +37,6 @@ interface StudentProgress {
     totalQuestions: number;
     details: QuizDetail[]; // Add this new property
     pending: PendingQuiz[];
-  };
-  activities: {
-    completed: number;
-    totalActivities: number;
-    completionRate: number;
-    details: ActivityDetail[]; // Add this new property
-    pending: PendingActivity[];
   };
   overallProgress: number;
 }
@@ -91,19 +68,6 @@ export const AssessmentDialog = ({ student }: AssessmentDialogProps) => {
     exportToExcel(formattedData, `${student.studentName}-quizzes`);
   };
 
-  const handleExportActivities = () => {
-    const activityData = [
-      ...student.activities.details,
-      ...student.activities.pending.map(activity => ({
-        ...activity,
-       
-        status: false
-      }))
-    ];
-    const formattedData = formatActivitiesForExport(activityData);
-    exportToExcel(formattedData, `${student.studentName}-activities`);
-  };
-
   return (
     <DialogContent className="max-w-4xl">
       <DialogHeader>
@@ -114,7 +78,6 @@ export const AssessmentDialog = ({ student }: AssessmentDialogProps) => {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="quizzes">Quizzes</TabsTrigger>
-          <TabsTrigger value="activities">Activities</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -134,14 +97,6 @@ export const AssessmentDialog = ({ student }: AssessmentDialogProps) => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{student.quizzes.averageScore}%</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Activity Completion</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{student.activities.completionRate}%</div>
                 </CardContent>
               </Card>
             </div>
@@ -176,23 +131,6 @@ export const AssessmentDialog = ({ student }: AssessmentDialogProps) => {
                           student.quizzes.averageScore >= 75 ? "default" : "destructive"}>
                           {student.quizzes.averageScore >= 90 ? "Excellent" :
                             student.quizzes.averageScore >= 75 ? "Good" : "Needs Improvement"}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Activities</TableCell>
-                      <TableCell>{student.activities.completed}</TableCell>
-                      <TableCell>{student.activities.totalActivities - student.activities.completed}</TableCell>
-                      <TableCell>
-                        <span className={getProgressColor(student.activities.completionRate)}>
-                          {student.activities.completionRate}%
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={student.activities.completionRate >= 90 ? "secondary" :
-                          student.activities.completionRate >= 75 ? "default" : "destructive"}>
-                          {student.activities.completionRate >= 90 ? "Excellent" :
-                            student.activities.completionRate >= 75 ? "Good" : "Needs Improvement"}
                         </Badge>
                       </TableCell>
                     </TableRow>
@@ -290,98 +228,6 @@ export const AssessmentDialog = ({ student }: AssessmentDialogProps) => {
                     </TableBody>
                   </Table>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="activities">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Activity Performance Details</CardTitle>
-              <Button onClick={handleExportActivities} variant="outline" size="sm">
-                Export to Excel
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="text-sm font-medium">Completed Activities</h4>
-                    <p className="text-2xl font-bold">{student.activities.completed}/{student.activities.totalActivities}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium">Completion Rate</h4>
-                    <p className="text-2xl font-bold text-green-600">{student.activities.completionRate}%</p>
-                  </div>
-                </div>
-
-                <div className="border rounded-lg">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Activity Name</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Completed Date</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {student.activities.details.map((activity) => (
-                        <TableRow key={activity.id}>
-                          <TableCell className="font-medium">{activity.name}</TableCell>
-                          <TableCell className="max-w-[200px] truncate">
-                            {activity.description}
-                          </TableCell>
-                          <TableCell>
-                            {new Date(activity.completedAt).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={activity.status ? "secondary" : "destructive"}
-                            >
-                              {activity.status ? "Completed" : "Incomplete"}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                {student.activities.pending.length > 0 && (
-                  <div className="border rounded-lg mt-6">
-                    <CardHeader>
-                      <CardTitle className="text-sm text-orange-600">Pending Activities</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Activity Name</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Status</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {student.activities.pending.map((activity) => (
-                            <TableRow key={activity.id}>
-                              <TableCell className="font-medium">{activity.name}</TableCell>
-                              <TableCell className="max-w-[200px] truncate">
-                                {activity.description}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className="text-orange-600 border-orange-600">
-                                  Pending
-                                </Badge>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>

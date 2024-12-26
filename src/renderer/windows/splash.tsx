@@ -1,6 +1,6 @@
 import logo from '../assets/passlogo-small.png';
 import '../styles/globals.css';
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { IPCRoute, WindowIdentifier } from '../../shared/constants';
 import { sleep } from '../../shared/utils';

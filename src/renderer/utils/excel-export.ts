@@ -18,12 +18,3 @@ export const formatQuizzesForExport = (quizzes: any[]) => {
        quiz.score >= 75 ? 'Good' : 'Needs Improvement')
   }));
 };
-
-export const formatActivitiesForExport = (activities: any[]) => {
-  return activities.map(activity => ({
-    'Activity Name': activity.name,
-    'Description': activity.description,
-    'Completion Date': activity.completedAt ? new Date(activity.completedAt).toLocaleDateString() : 'Not attempted',
-    'Status': activity.status ? 'Completed' : 'Incomplete'
-  }));
-};

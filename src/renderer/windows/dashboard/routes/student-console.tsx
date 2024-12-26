@@ -1,7 +1,5 @@
 import logo from '@/renderer/assets/passlogo-small.png';
 import {
-  Activity,
-  ActivityRecord,
   DeviceUser,
   Quiz,
   QuizRecord,
@@ -12,10 +10,12 @@ import {
   LogOut,
   RefreshCw,
   Book,
-  ChevronDown,
   PlusCircle,
   Clock,
   Minimize2,
+  Folders,
+  Globe2,
+  Menu,
 } from 'lucide-react';
 import { Toaster } from '../../../components/ui/toaster';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -31,41 +31,19 @@ import {
   DialogTrigger,
 } from '../../../components/ui/dialog';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../../components/ui/select';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '../../../components/ui/alert-dialog';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/renderer/components/ui/card';
-import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from '@/renderer/components/ui/avatar';
 import { Badge } from '../../../components/ui/badge';
-import { Progress } from '@/renderer/components/ui/progress';
-import { useNavigate } from 'react-router-dom';
 import { usePeer } from '@/renderer/components/peer-provider';
 import { MediaConnection } from 'peerjs';
 import { Label } from '@/renderer/components/ui/label';
 import { WindowIdentifier } from '@/shared/constants';
+import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarProvider, SidebarTrigger } from '@/renderer/components/ui/sidebar';
+import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@radix-ui/react-dropdown-menu';
 
 interface StudentConsoleProps {
   user: DeviceUser;
@@ -76,25 +54,20 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   user,
   handleLogout,
 }) => {
-  const navigate = useNavigate();
   const { toast } = useToast();
   const { peer } = usePeer();
   const [subjectCode, setSubjectCode] = useState('');
   const [subjects, setSubjects] = useState<
     (Subject & {
       quizzes: Quiz[];
-      activities: Activity[];
       quizRecord: QuizRecord[];
-      activityRecord: ActivityRecord[];
     })[]
   >([]);
   const [isJoining, setIsJoining] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<
     | (Subject & {
         quizzes: Quiz[];
-        activities: Activity[];
         quizRecord: QuizRecord[];
-        activityRecord: ActivityRecord[];
       })
     | null
   >(null);
@@ -280,7 +253,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   };
 
   const calculateProgress = () => {
-    if (!selectedSubject) return { quizzes: 0, activities: 0, overall: 0 };
+    if (!selectedSubject) return { quizzes: 0, overall: 0 };
 
     const userQuizRecords = selectedSubject.quizRecord.filter(
       (record) => record.userId === user.id,
@@ -289,25 +262,14 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
     const totalQuizzes = selectedSubject.quizzes.filter(
       (quiz) => quiz.published,
     ).length;
-    const completedActivities = selectedSubject.activityRecord.filter(
-      (activity) => activity.completed && activity.userId === user.id,
-    ).length;
-    const totalActivities = selectedSubject.activities.length;
 
     const quizProgress =
       totalQuizzes > 0 ? (completedQuizzes / totalQuizzes) * 100 : 0;
-    const activityProgress =
-      totalActivities > 0 ? (completedActivities / totalActivities) * 100 : 0;
 
-    // If there are no activities, only use quiz progress for overall
-    const overallProgress =
-      totalActivities === 0
-        ? quizProgress
-        : (quizProgress + activityProgress) / 2;
+    const overallProgress = quizProgress;
 
     return {
       quizzes: completedQuizzes,
-      activities: completedActivities,
       overall: Math.round(overallProgress),
     };
   };
@@ -362,9 +324,6 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
     });
   };
 
-  const handleViewQuizResults = (subjectId: string) => {
-    navigate(`/results/quiz-results/${subjectId}`);
-  };
 
   const handleDownloadFile = useCallback(() => {
     if (receivedFile) {
@@ -386,458 +345,504 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#EAEAEB]">
-      {/* Header */}
-      <header className="bg-[#C9121F] text-white p-4 flex justify-between items-center shadow-lg sticky top-0 z-50">
-        <div className="flex items-center">
-          <img
-            src={logo}
-            alt="PASS College Logo"
-            className="h-10 w-auto mr-2 rounded-full border-2 border-[#EBC42E]"
-          />
-          <h1 className="text-2xl font-bold">Student's Dashboard</h1>
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleMinimizeWindow}
-            className="text-white hover:bg-[#EBC42E]/20"
-          >
-            <Minimize2 className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleRefresh}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-          <Dialog
-            open={isProfileDialogOpen}
-            onOpenChange={setIsProfileDialogOpen}
-          >
-            <DialogTrigger asChild>
-              <div className="flex items-center cursor-pointer hover:bg-yellow-600 rounded-full p-2 transition-colors duration-200">
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src={'/default-avatar.png'} alt="User Avatar" />
-                  <AvatarFallback>
-                    {user.firstName[0]}
-                    {user.lastName[0]}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-sm ml-2 mr-1">
-                  {user.firstName} {user.lastName}
-                </span>
-                <ChevronDown className="h-4 w-4" />
-              </div>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Student Information</DialogTitle>
-              </DialogHeader>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Name:</p>
-                  <p className="font-medium">
-                    {user.firstName} {user.lastName}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Student ID:</p>
-                  <p className="font-medium">{user.schoolId}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Course :</p>
-                  <p className="font-medium">{user.course}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Year:</p>
-                  <p className="font-medium">{user.yearLevel}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Last Login:</p>
-                  <p className="font-medium"></p>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
-            <LogOut className="h-4 w-4" />
-          </Button>
-        </div>
-      </header>
-
-      {/* Main content */}
-      <main className="flex-grow p-4 overflow-y-auto relative no-scrollbar">
-        {/* Subject Selection */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border-l-4 border-[#C9121F]">
-          <h2 className="text-xl font-bold mb-4 text-[#1A1617] flex items-center">
-            <Book className="mr-2 h-6 w-6 text-[#C9121F]" /> Your Subjects
-          </h2>
-          {subjects.length > 0 ? (
-            <div className="space-y-4">
-              <div className="flex space-x-4 items-center">
-                <Select
-                  onValueChange={handleSubjectChange}
-                  value={selectedSubject?.id.toString()}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a subject" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {subjects.map((subject) => (
-                      <SelectItem
-                        key={subject.id}
-                        value={subject.id.toString()}
-                      >
-                        {subject.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="outline" disabled={!selectedSubject}>
-                      Leave Subject
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This action cannot be undone. You will need to rejoin
-                        the subject if you want to access it again.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={handleLeaveSubject}
-                        disabled={isLeavingSubject}
-                      >
-                        {isLeavingSubject ? 'Leaving...' : 'Leave Subject'}
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </div>
-              {selectedSubject && (
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h3 className="font-semibold text-lg mb-2">
-                    {selectedSubject.name}
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-2">
-                    Subject Code: {selectedSubject.subjectCode}
-                  </p>
-                  <div className="flex space-x-4">
-                    <div>
-                      <span className="text-sm font-medium">Quizzes: </span>
-                      <span className="text-sm">
-                        {
-                          selectedSubject.quizzes.filter(
-                            (quiz) => quiz.published,
-                          ).length
-                        }
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-sm font-medium">Activities: </span>
-                      <span className="text-sm">
-                        {selectedSubject.activities.length}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
+    <SidebarProvider>
+      <div className="min-h-screen w-screen bg-[#EAEAEB] flex">
+        <Sidebar className="border-r bg-white w-64">
+          <SidebarHeader>
+            <div className="flex items-center space-x-2 px-4 py-4">
+              <Book className="h-5 w-5 text-[#C9121F]" />
+              <h2 className="text-lg font-semibold">Student Dashboard</h2>
             </div>
-          ) : (
-            <p className="text-gray-500 mb-4">
-              No subjects available. Please join a subject first.
-            </p>
-          )}
-          <Dialog open={isJoinDialogOpen} onOpenChange={setIsJoinDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full mt-4 bg-green-100 hover:bg-green-200 text-green-600"
-              >
-                <PlusCircle className="h-5 w-5 mr-2" /> Join New Subject
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Join a Subject</DialogTitle>
-              </DialogHeader>
-              <div className="flex flex-col space-y-4">
-                <Input
-                  placeholder="Enter subject code"
-                  value={subjectCode}
-                  onChange={(e) => setSubjectCode(e.target.value)}
-                />
-                <Button onClick={handleJoinSubject} disabled={isJoining}>
-                  {isJoining ? 'Joining...' : 'Join Subject'}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+          </SidebarHeader>
+          <SidebarContent>
+            {/* Subjects Section */}
+            <div className="px-3 py-2">
+              <h3 className="text-sm font-medium text-gray-500 px-2 mb-2">
+                My Subjects
+              </h3>
+              <SidebarMenu>
+                {subjects.map((subject) => (
+                  <SidebarMenuItem key={subject.id}>
+                    <SidebarMenuButton
+                      isActive={selectedSubject?.id === subject.id}
+                      onClick={() => handleSubjectChange(subject.id.toString())}
+                      className="w-full flex items-center"
+                    >
+                      <Folders className="h-4 w-4 mr-2" />
+                      <span className="truncate">{subject.name}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => setIsJoinDialogOpen(true)}
+                    className="text-muted-foreground hover:bg-gray-100 w-full"
+                  >
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    <span>Join Subject</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </div>
+          </SidebarContent>
+        </Sidebar>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Progress Overview */}
-          <Card className="bg-white shadow-lg border-t-4 border-[#C9121F]">
-            <CardHeader>
-              <CardTitle className="text-[#1A1617]">
-                Progress Overview
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {selectedSubject ? (
-                <div className="space-y-4">
+        <div className="flex-1">
+          <header className="bg-[#C9121F] border-b shadow-lg sticky top-0 z-50">
+            <div className="px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between items-center h-16">
+                <div className="flex items-center space-x-4">
+                  <SidebarTrigger className="text-white hover:bg-[#EBC42E]/20">
+                    <Menu className="h-5 w-5" />
+                  </SidebarTrigger>
+                  <img
+                    src={logo}
+                    alt="PASS College Logo"
+                    className="h-10 w-auto"
+                  />
                   <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-sm font-medium">
-                        Quizzes Completed
-                      </span>
-                      <span className="text-sm font-medium">
-                        {calculateProgress().quizzes}/
-                        {
-                          selectedSubject.quizzes.filter(
-                            (quiz) => quiz.published,
-                          ).length
-                        }
-                      </span>
-                    </div>
-                    <Progress
-                      value={
-                        (calculateProgress().quizzes /
-                          selectedSubject.quizzes.filter(
-                            (quiz) => quiz.published,
-                          ).length) *
-                        100
-                      }
-                      className="h-2"
-                    />
-                  </div>
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-sm font-medium">
-                        Activities Finished
-                      </span>
-                      <span className="text-sm font-medium">
-                        {calculateProgress().activities}/
-                        {selectedSubject.activities.length}
-                      </span>
-                    </div>
-                    <Progress
-                      value={
-                        (calculateProgress().activities /
-                          selectedSubject.activities.length) *
-                        100
-                      }
-                      className="h-2"
-                    />
-                  </div>
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-sm font-medium">
-                        Overall Progress
-                      </span>
-                      <span className="text-sm font-medium">
-                        {calculateProgress().overall}%
-                      </span>
-                    </div>
-                    <Progress
-                      value={calculateProgress().overall}
-                      className="h-2"
-                    />
+                    <h1 className="text-xl font-semibold text-white">
+                      EduInsight
+                    </h1>
+                    <p className="text-sm text-[#EBC42E]">Student Console</p>
                   </div>
                 </div>
-              ) : (
-                <p className="text-gray-500">
-                  Select a subject to view progress.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-          {/* Quizzes */}
-          <Card className="bg-white shadow-lg border-t-4 border-[#EBC42E]">
-            <CardHeader>
-              <CardTitle className="text-[#1A1617]">Quizzes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {subjects.length > 0 ? (
-                selectedSubject ? (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mb-4 w-full flex items-center justify-center"
-                      onClick={() => handleViewQuizResults(selectedSubject.id)}
-                    >
-                      <Clock className="h-4 w-4 mr-2" />
-                      View Quiz Results
-                    </Button>
-                    {selectedSubject.quizzes.filter((quiz) => quiz.published)
-                      .length > 0 ? (
-                      <ul className="space-y-4">
-                        {selectedSubject.quizzes
-                          .filter((quiz) => quiz.published)
-                          .map((quiz) => {
-                            const quizRecord = selectedSubject.quizRecord.find(
-                              (record) =>
-                                record.quizId === quiz.id &&
-                                record.userId === user.id,
-                            );
-                            const isQuizDone = !!quizRecord;
-                            const score = quizRecord
-                              ? (quizRecord.score / quizRecord.totalQuestions) *
-                                100
-                              : 0;
-                            return (
-                              <li
-                                key={quiz.id}
-                                className="bg-gray-50 rounded-lg p-3 shadow-sm"
-                              >
-                                <div className="flex justify-between items-center mb-2">
-                                  <span className="font-semibold">
-                                    {quiz.title}
-                                  </span>
-                                  <Badge
-                                    variant={
-                                      isQuizDone ? 'secondary' : 'destructive'
-                                    }
-                                  >
-                                    {isQuizDone ? 'Done' : 'Not Done'}
-                                  </Badge>
-                                </div>
-                                {isQuizDone && (
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">
-                                      Score:
-                                    </span>
-                                    <span className="text-sm font-semibold">
-                                      {quizRecord.score}/
-                                      {quizRecord.totalQuestions}
-                                    </span>
-                                  </div>
-                                )}
-                                <Progress value={score} className="mt-2" />
-                                {!isQuizDone && (
-                                  <Button
-                                    size="sm"
-                                    className="mt-2 w-full"
-                                    onClick={() => handleStartQuiz(quiz.id)}
-                                  >
-                                    Start
-                                  </Button>
-                                )}
-                              </li>
-                            );
-                          })}
-                      </ul>
-                    ) : (
-                      <p className="text-gray-500">
-                        No published quizzes available for this subject.
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-gray-500">
-                    Please select a subject to view quizzes.
-                  </p>
-                )
-              ) : (
-                <p className="text-gray-500">
-                  Join a subject to view available quizzes.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-          {/* Activities */}
-          <Card className="bg-white shadow-lg border-t-4 border-[#C9121F]">
-            <CardHeader>
-              <CardTitle className="text-[#1A1617]">Activities</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {subjects.length > 0 ? (
-                selectedSubject ? (
-                  selectedSubject.activities.length > 0 ? (
-                    <ul className="space-y-2">
-                      {selectedSubject.activities.map((activity) => (
-                        <li
-                          key={activity.id}
-                          className="flex justify-between items-center"
+
+                <div className="flex items-center space-x-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleMinimizeWindow}
+                    className="text-white hover:bg-[#EBC42E]/20"
+                  >
+                    <Minimize2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRefresh}
+                    className="text-white hover:bg-[#EBC42E]/20"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                  
+
+                  <Dialog
+                    open={isProfileDialogOpen}
+                    onOpenChange={setIsProfileDialogOpen}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="flex items-center space-x-2"
+                      >
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={'/default-avatar.png'} />
+                          <AvatarFallback>
+                            {user.firstName[0]}
+                            {user.lastName[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="hidden md:inline text-white">
+                          {user.firstName} {user.lastName}
+                        </span>
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[425px]">
+                      <DialogHeader>
+                        <DialogTitle className="text-2xl font-bold text-[#C9121F]">
+                          Student Profile
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="pt-4">
+                        <div className="flex items-center justify-center mb-6">
+                          <Avatar className="h-24 w-24">
+                            <AvatarImage src={'/default-avatar.png'} />
+                            <AvatarFallback className="text-2xl">
+                              {user.firstName[0]}
+                              {user.lastName[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
+                        <div className="space-y-4">
+                          <div className="bg-gray-50 p-4 rounded-lg">
+                            <h3 className="text-sm font-medium text-gray-500 mb-2">
+                              Personal Information
+                            </h3>
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-sm text-gray-600">
+                                  Full Name:
+                                </span>
+                                <span className="text-sm font-medium">
+                                  {user.firstName} {user.lastName}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-sm text-gray-600">
+                                  Student ID:
+                                </span>
+                                <span className="text-sm font-medium">
+                                  {user.schoolId}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-sm text-gray-600">
+                                  Course:
+                                </span>
+                                <span className="text-sm font-medium">
+                                  {user.course}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-sm text-gray-600">
+                                  Year:
+                                </span>
+                                <span className="text-sm font-medium">
+                                  {user.yearLevel}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => setIsProfileDialogOpen(false)}
                         >
-                          <span>{activity.name}</span>
+                          Close
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleLogout}
+                    className="text-white hover:bg-[#EBC42E]/20"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {selectedSubject&& <div className="bg-white border-b">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between items-center h-14">
+                <div className="flex space-x-4">
+                  {/* Actions Button */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="flex items-center space-x-2"
+                      >
+                        <Globe2 className="h-4 w-4" />
+                        <span>Settings</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem 
+                       disabled={isLeavingSubject}
+                      onClick={handleLeaveSubject}>
+                     { isLeavingSubject ? 'Leaving...' :  'Leave Subject'}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            </div>
+          </div>}
+
+          <main className="px-4 sm:px-6 lg:px-8 py-4 relative h-[calc(100vh-8rem)] overflow-y-auto">
+            {subjects.length === 0 ? (
+              // No subjects state
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center max-w-md">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    No Subjects Available
+                  </h3>
+                  <p className="text-gray-500 mb-4">
+                    Join a subject to get started with your classes.
+                  </p>
+                  <Button
+                    onClick={() => setIsJoinDialogOpen(true)}
+                    className="inline-flex items-center"
+                  >
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    Join New Subject
+                  </Button>
+                </div>
+              </div>
+            ) : !selectedSubject ? (
+              // No subject selected state
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center max-w-md">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    No Subject Selected
+                  </h3>
+                  <p className="text-gray-500 mb-4">
+                    Select a subject from the sidebar to view its details.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              // Existing subject view content
+              <div className="grid gap-4">
+                {/* Combined Subject Details and Statistics Card */}
+                <div className="bg-white rounded-lg shadow p-4 border-l-4 border-[#C9121F]">
+                  <div className="flex justify-between gap-4">
+                    {/* Subject Details - Made more compact */}
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h2 className="text-xl font-bold text-gray-900">
+                            {selectedSubject.name}
+                          </h2>
+                          <p className="text-xs text-blue-700">
+                            Code: {selectedSubject.subjectCode}
+                          </p>
+                          <p className="text-xs text-gray-600 line-clamp-2">
+                            {selectedSubject.description}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Statistics - Made more compact */}
+                    <div className="flex-1 border-l pl-4">
+                      <h3 className="text-sm font-semibold text-blue-900 mb-2">
+                        Class Statistics
+                      </h3>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-gray-50 rounded p-2 text-center">
+                          <p className="text-lg font-bold text-blue-600">
+                            {selectedSubject.quizzes.length}
+                          </p>
+                          <p className="text-xs text-gray-600">Quizzes</p>
+                        </div>
+                        <div className="bg-gray-50 rounded p-2 text-center">
+                          <p className="text-lg font-bold text-green-600">
+                            {selectedSubject.quizRecord.length}
+                          </p>
+                          <p className="text-xs text-gray-600">Records</p>
+                        </div>
+                        <div className="bg-gray-50 rounded p-2 text-center">
+                          <p className="text-lg font-bold text-amber-600">
+                            {calculateProgress().overall}%
+                          </p>
+                          <p className="text-xs text-gray-600">Progress</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Quizzes List - Adjusted height */}
+            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-[#EBC42E] flex-1">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center space-x-2">
+                  <Clock className="h-4 w-4 text-gray-700" />
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Quizzes
+                  </h2>
+                </div>
+              </div>
+
+              <Tabs defaultValue="published" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="published">
+                    Published ({selectedSubject?.quizzes.filter(quiz => quiz.published).length})
+                  </TabsTrigger>
+                  <TabsTrigger value="unpublished">
+                    Unpublished ({selectedSubject?.quizzes.filter(quiz => !quiz.published).length})
+                  </TabsTrigger>
+                  <TabsTrigger value="received-files">
+                    Received Files
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="published">
+                  <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
+                    <div className="space-y-2">
+                      {selectedSubject?.quizzes.filter(quiz => quiz.published).map((quiz) => {
+                        const quizRecord = selectedSubject.quizRecord.find(
+                          (record) => record.quizId === quiz.id && record.userId === user.id,
+                        );
+                        const isQuizDone = !!quizRecord;
+                        const score = quizRecord
+                          ? (quizRecord.score / quizRecord.totalQuestions) * 100
+                          : 0;
+                        return (
+                          <div
+                            key={quiz.id}
+                            className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <div>
+                                <p className="text-sm font-medium">
+                                  {quiz.title}
+                                </p>
+                                {isQuizDone && (
+                                  <p className="text-xs text-gray-500">
+                                    Score: {score}/{quizRecord.totalQuestions}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className="text-xs text-gray-500"
+                            >
+                              {isQuizDone ? 'Done' : 'Not Done'}
+                            </Badge>
+                            {!isQuizDone && (
+                              <Button
+                                size="sm"
+                                className="ml-2"
+                                onClick={() => handleStartQuiz(quiz.id)}
+                              >
+                                Start
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+
+                <TabsContent value="unpublished">
+                  <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
+                    <div className="space-y-2">
+                      {selectedSubject?.quizzes.filter(quiz => !quiz.published).map((quiz) => (
+                        <div
+                          key={quiz.id}
+                          className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <div>
+                              <p className="text-sm font-medium">
+                                {quiz.title}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="text-xs text-gray-500"
+                          >
+                            Unpublished
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+
+                <TabsContent value="received-files">
+                  <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
+                    <div className="space-y-2">
+                      {receivedFile ? (
+                        <div className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100">
+                          <div className="flex items-center space-x-2">
+                            <div>
+                              <p className="text-sm font-medium">
+                                {receivedFile.name}
+                              </p>
+                            </div>
+                          </div>
                           <Button
                             size="sm"
-                            onClick={() =>
-                              toast({
-                                title: 'Activity Started',
-                                description: `You've started ${activity.name}`,
-                              })
-                            }
+                            className="ml-2"
+                            onClick={handleDownloadFile}
                           >
-                            Begin
+                            Download
                           </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-gray-500">
-                      No activities available for this subject.
-                    </p>
-                  )
-                ) : (
-                  <p className="text-gray-500">
-                    Please select a subject to view activities.
-                  </p>
-                )
-              ) : (
-                <p className="text-gray-500">
-                  Join a subject to view available activities.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">No files received.</p>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
+            </div>
+            <Toaster />
+            <Dialog open={isJoinDialogOpen} onOpenChange={setIsJoinDialogOpen}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Join a Subject</DialogTitle>
+                  <DialogDescription>
+                    Enter the subject code to join a new subject.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="subject-code" className="text-right">
+                      Code
+                    </Label>
+                    <Input
+                      id="subject-code"
+                      value={subjectCode}
+                      onChange={(e) => setSubjectCode(e.target.value)}
+                      className="col-span-3"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button onClick={handleJoinSubject} disabled={isJoining}>
+                    {isJoining ? 'Joining...' : 'Join Subject'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Dialog open={isFileDialogOpen} onOpenChange={setIsFileDialogOpen}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>File Received</DialogTitle>
+                  <DialogDescription>
+                    You have received a file. Click the button below to download it.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="file-name" className="text-right">
+                      File
+                    </Label>
+                    <Input
+                      id="file-name"
+                      value={receivedFile?.name || ''}
+                      readOnly
+                      className="col-span-3"
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="file-progress" className="text-right">
+                      Progress
+                    </Label>
+                    <progress
+                      id="file-progress"
+                      value={fileProgress}
+                      max="100"
+                      className="col-span-3"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button onClick={handleDownloadFile}>
+                    Download
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </main>
         </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="bg-[#1A1617] text-white text-center p-2 relative">
-        <p className="text-xs">
-          &copy; 2024 PASS College. All rights reserved.
-        </p>
-      </footer>
-      <Dialog open={isFileDialogOpen} onOpenChange={setIsFileDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>File Received</DialogTitle>
-            <DialogDescription>
-              You have received a file from your teacher. Click the button below to download it.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="file-name" className="text-right">
-                File
-              </Label>
-              <Input
-                id="file-name"
-                value={receivedFile?.name || ''}
-                readOnly
-                className="col-span-3 bg-gray-100"
-              />
-            </div>
-            <div className="col-span-4">
-              <Progress value={fileProgress} className="h-2" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={handleDownloadFile} disabled={fileProgress < 100}>
-              {fileProgress < 100 ? `Downloading... ${fileProgress}%` : 'Download'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Toaster />
-    </div>
+      </div>
+    </SidebarProvider>
   );
 };

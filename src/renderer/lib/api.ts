@@ -1,8 +1,6 @@
 import {
   ActiveDeviceUser,
   ActiveUserLogs,
-  Activity,
-  ActivityRecord,
   Device,
   DeviceUser,
   Labaratory,
@@ -151,9 +149,9 @@ export default {
         Array<
           Subject & {
             quizzes: Quiz[];
-            activities: Activity[];
+            
             quizRecord: QuizRecord[];
-            activityRecord: ActivityRecord[];
+           
           }
         >
       >,
@@ -165,9 +163,7 @@ export default {
         Array<
           Subject & {
             quizzes: Array<Quiz & { questions: QuizQuestion[] }>;
-            activities: Activity[];
             quizRecord: QuizRecord[];
-            activityRecord: ActivityRecord[];
           }
         >
       >,
@@ -285,19 +281,6 @@ export default {
             quiz: Quiz & {
               questions: QuizQuestion[];
             };
-          }
-        >
-      >,
-
-    getActivityRecordsByUserAndSubject: (userId: string, subjectId: string) =>
-      ipcRenderer.invoke(
-        IPCRoute.DATABASE_GET_ACTIVITY_RECORDS_BY_USER_AND_SUBJECT,
-        userId,
-        subjectId,
-      ) as Promise<
-        Array<
-          ActivityRecord & {
-            activity: Activity;
           }
         >
       >,

@@ -335,10 +335,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   const handleCreateAssignment = (type: 'quiz' | 'activity') => {
     if (selectedSubject) {
       if (type === 'quiz') {
-        api.window.open(WindowIdentifier.QuizTeacher);
-        api.window.send(WindowIdentifier.QuizTeacher, {
-          subjectId: selectedSubject.id,
-        });
+        navigate(`/quiz/library/${selectedSubject.id}`);
       } else {
         toast({
           title: 'Coming Soon',
