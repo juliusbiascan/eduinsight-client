@@ -510,27 +510,28 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     const file = event.target.files?.[0];
     
     if (file && selectedSubject) {
-      const reader = new FileReader();
-      reader.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const progress = (e.loaded / e.total) * 100;
-          setFileProgress(progress);
-        }
-      };
-      reader.onload = () => {
-        const content = reader.result as ArrayBuffer;
-        for (const user of activeUsers) {
-          socket.emit("upload-file", { deviceId: user.deviceId, file: { name: file.name, content: new Blob([content]) }, subjectName: selectedSubject.name });
-        }
-        toast({
-          title: 'File Shared',
-          description: 'The file has been shared with student devices.',
-        });
-        setFileProgress(0);
-      };
-      reader.readAsArrayBuffer(file);
+        const reader = new FileReader();
+        reader.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const progress = (e.loaded / e.total) * 100;
+                setFileProgress(progress);
+            }
+        };
+        reader.onload = () => {
+            const content = reader.result as ArrayBuffer;
+            const base64File = Buffer.from(content).toString('base64');
+            for (const user of activeUsers) {
+                socket.emit("upload-file", { deviceId: user.deviceId, file: base64File, filename: file.name, subjectName: selectedSubject.name });
+            }
+            toast({
+                title: 'File Shared',
+                description: 'The file has been shared with student devices.',
+            });
+            setFileProgress(0);
+        };
+        reader.readAsArrayBuffer(file);
     }
-  };
+};
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();

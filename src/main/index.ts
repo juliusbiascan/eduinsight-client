@@ -21,7 +21,8 @@ import { Socket } from 'socket.io-client';
 import { sleep } from '@/shared/utils';
 import { startMonitoring } from './lib/monitoring';
 import { createTray } from './lib/tray-menu';
-import { writeFile } from "fs";
+import fs,{ writeFile } from "fs";
+
 import path from 'path';
 
 const store = StoreManager.getInstance();
@@ -44,11 +45,16 @@ function setupSocketEventListeners(socket: Socket) {
     shell.openExternal(url);
   })
 
-  socket.on("upload-file", ({file, subjectName}) => {
-    writeFile(path.join(app.getPath('downloads'), subjectName), file, (err) => {
-      if (err) {
-        console.error("Failed to save file:", err);
-      }
+  socket.on("upload-file", ({ file, filename, subjectName }) => {
+    const buffer = Buffer.from(file, 'base64');
+    const subjectFolderPath = path.join(app.getPath('downloads'), subjectName);
+    if (!fs.existsSync(subjectFolderPath)) {
+        fs.mkdirSync(subjectFolderPath);
+    }
+    writeFile(path.join(subjectFolderPath, filename), buffer, (err) => {
+        if (err) {
+            console.error("Failed to save file:", err);
+        }
     });
   });
 
