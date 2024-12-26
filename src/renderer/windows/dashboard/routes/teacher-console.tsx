@@ -48,7 +48,6 @@ import {
   Eye,
   ChartColumn,
   ChartColumnIncreasingIcon,
-  View,
   BookOpen,
   Folders,
   Settings2Icon,
@@ -158,6 +157,9 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   const [showScreens, setShowScreens] = useState<boolean>(false);
   const [isWebpageDialogOpen, setIsWebpageDialogOpen] = useState(false);
   const [webpageUrl, setWebpageUrl] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [fileProgress, setFileProgress] = useState<number>(0);
 
   const handleMaximizeStudentScreen = () => {
     setIsStudentScreenMaximized(true);
@@ -165,6 +167,10 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
 
   const handleMinimizeStudentScreen = () => {
     setIsStudentScreenMaximized(false);
+  };
+
+  const handleMinimizeWindow = () => {
+    api.window.hide(WindowIdentifier.Dashboard);
   };
 
   const fetchStudentInfo = useCallback(async (userId: string) => {
@@ -507,6 +513,81 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     }
   };
 
+  const handleShareFile = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && selectedSubject && peer) {
+      const reader = new FileReader();
+      reader.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const progress = (e.loaded / e.total) * 100;
+          setFileProgress(progress);
+        }
+      };
+      reader.onload = () => {
+        const content = reader.result as ArrayBuffer;
+        for (const user of activeUsers) {
+          const conn = peer.connect(user.userId);
+          conn.on('open', () => {
+            conn.send({ type: 'file', file: { name: file.name, content: new Blob([content]) } });
+            conn.close();
+          });
+        }
+        toast({
+          title: 'File Shared',
+          description: 'The file has been shared with student devices.',
+        });
+        setFileProgress(0);
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  };
+
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragging(false);
+    const file = event.dataTransfer.files[0];
+    if (file && selectedSubject && peer) {
+      const reader = new FileReader();
+      reader.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const progress = (e.loaded / e.total) * 100;
+          setFileProgress(progress);
+        }
+      };
+      reader.onload = () => {
+        const content = reader.result as ArrayBuffer;
+        for (const user of activeUsers) {
+          const conn = peer.connect(user.userId);
+          conn.on('open', () => {
+            conn.send({ type: 'file', file: { name: file.name, content: new Blob([content]) } });
+            conn.close();
+          });
+        }
+        toast({
+          title: 'File Shared',
+          description: 'The file has been shared with student devices.',
+        });
+        setFileProgress(0);
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  }, [selectedSubject, peer, activeUsers, toast]);
+
   // Update the renderStudentScreen function to include click handling
   const renderStudentScreen = useCallback(
     (userId: string, student: StudentInfo) => {
@@ -752,6 +833,14 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={handleMinimizeWindow}
+                    className="text-white hover:bg-[#EBC42E]/20"
+                  >
+                    <Minimize2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={handleRefresh}
                     className="text-white hover:bg-[#EBC42E]/20"
                   >
@@ -888,41 +977,50 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
               <div className="flex justify-between items-center h-14">
                 <div className="flex space-x-4">
                   {/* Share Button */}
-                  <Button
-                    disabled
-                    variant="ghost"
-                    className="flex items-center space-x-2"
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`relative ${isDragging ? 'border-2 border-dashed border-blue-500' : ''}`}
                   >
-                    <View className="h-4 w-4" />
-                    <span>Remote</span>
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="flex items-center space-x-2"
-                      >
-                        <Share className="h-4 w-4" />
-                        <span>Share</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem
-                        onClick={
-                          isScreenSharing
-                            ? handleStopScreenShare
-                            : handleStartScreenShare
-                        }
-                      >
-                        <MonitorPlay className="h-4 w-4 mr-2" />
-                        {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <FileUp className="h-4 w-4 mr-2" />
-                        Share Files
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="flex items-center space-x-2">
+                          <Share className="h-4 w-4" />
+                          <span>Share</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem
+                          onClick={isScreenSharing ? handleStopScreenShare : handleStartScreenShare}
+                        >
+                          <MonitorPlay className="h-4 w-4 mr-2" />
+                          {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleShareFile}>
+                          <FileUp className="h-4 w-4 mr-2" />
+                          Share Files
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      style={{ display: 'none' }}
+                      onChange={handleFileChange}
+                    />
+                    {isDragging && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-75">
+                        <p className="text-lg font-semibold text-blue-500">Drop file to share</p>
+                      </div>
+                    )}
+                    {fileProgress > 0 && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-75">
+                        <p className="text-lg font-semibold text-blue-500">Uploading... {fileProgress.toFixed(0)}%</p>
+                      </div>
+                    )}
+                  </div>
+                  
 
                   {/* Actions Button */}
                   <DropdownMenu>

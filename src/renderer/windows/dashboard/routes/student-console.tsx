@@ -15,14 +15,17 @@ import {
   ChevronDown,
   PlusCircle,
   Clock,
+  Minimize2,
 } from 'lucide-react';
 import { Toaster } from '../../../components/ui/toaster';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -61,6 +64,8 @@ import { Progress } from '@/renderer/components/ui/progress';
 import { useNavigate } from 'react-router-dom';
 import { usePeer } from '@/renderer/components/peer-provider';
 import { MediaConnection } from 'peerjs';
+import { Label } from '@/renderer/components/ui/label';
+import { WindowIdentifier } from '@/shared/constants';
 
 interface StudentConsoleProps {
   user: DeviceUser;
@@ -101,6 +106,9 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const screenShareInterval = useRef<NodeJS.Timeout>();
   const connection = useRef<MediaConnection | null>(null);
+  const [fileProgress, setFileProgress] = useState<number>(0);
+  const [isFileDialogOpen, setIsFileDialogOpen] = useState<boolean>(false);
+  const [receivedFile, setReceivedFile] = useState<{ name: string; url: string } | null>(null);
 
   useEffect(() => {
     if (peer) {
@@ -111,13 +119,8 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
             api.window.openExternalLink(data.url);
           } else if (data.type === "file" && data.file) {
             const url = URL.createObjectURL(data.file.content);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = data.file.name;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            setReceivedFile({ name: data.file.name, url });
+            setIsFileDialogOpen(true);
           }
         });
       });
@@ -363,6 +366,25 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
     navigate(`/results/quiz-results/${subjectId}`);
   };
 
+  const handleDownloadFile = useCallback(() => {
+    if (receivedFile) {
+      const a = document.createElement('a');
+      a.href = receivedFile.url;
+      a.download = receivedFile.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(receivedFile.url);
+      setIsFileDialogOpen(false);
+      setReceivedFile(null);
+      setFileProgress(0);
+    }
+  }, [receivedFile]);
+
+  const handleMinimizeWindow = () => {
+    api.window.hide(WindowIdentifier.Dashboard);
+  };
+
   return (
     <div className="flex flex-col h-screen bg-[#EAEAEB]">
       {/* Header */}
@@ -376,6 +398,14 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
           <h1 className="text-2xl font-bold">Student's Dashboard</h1>
         </div>
         <div className="flex items-center space-x-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleMinimizeWindow}
+            className="text-white hover:bg-[#EBC42E]/20"
+          >
+            <Minimize2 className="h-4 w-4" />
+          </Button>
           <Button variant="ghost" size="sm" onClick={handleRefresh}>
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -776,6 +806,37 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
           &copy; 2024 PASS College. All rights reserved.
         </p>
       </footer>
+      <Dialog open={isFileDialogOpen} onOpenChange={setIsFileDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>File Received</DialogTitle>
+            <DialogDescription>
+              You have received a file from your teacher. Click the button below to download it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="file-name" className="text-right">
+                File
+              </Label>
+              <Input
+                id="file-name"
+                value={receivedFile?.name || ''}
+                readOnly
+                className="col-span-3 bg-gray-100"
+              />
+            </div>
+            <div className="col-span-4">
+              <Progress value={fileProgress} className="h-2" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleDownloadFile} disabled={fileProgress < 100}>
+              {fileProgress < 100 ? `Downloading... ${fileProgress}%` : 'Download'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Toaster />
     </div>
   );

@@ -228,12 +228,6 @@ function create(
     }
   });
 
-  if (id === WindowIdentifier.Dashboard) {
-    window.on('blur', () => {
-      window.hide();
-    });
-  }
-
   if (id === WindowIdentifier.Welcome) {
     window.webContents.on('did-finish-load', () => {
       const windowBounds = window.getBounds();
