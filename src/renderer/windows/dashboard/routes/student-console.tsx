@@ -89,9 +89,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
       peer.on("connection", (conn) => {
         conn.on("data", (data: { type: string; url?: string; file?: { name: string; content: Blob } }) => {
           console.log("Received data:", data);
-          if (data.type === "webpage" && data.url) {
-            api.window.openExternalLink(data.url);
-          } else if (data.type === "file" && data.file) {
+          if (data.type === "file" && data.file) {
             const url = URL.createObjectURL(data.file.content);
             setReceivedFile({ name: data.file.name, url });
             setIsFileDialogOpen(true);

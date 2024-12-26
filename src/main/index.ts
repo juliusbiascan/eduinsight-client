@@ -3,7 +3,7 @@
  * @description Main entry point for the EduInsight Client application.
  */
 
-import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { Database, WindowManager } from './lib';
 import * as IPCHandlers from './handlers';
 import {
@@ -14,14 +14,12 @@ import {
   removeAllListeners,
   testHttpConnection,
 } from './lib/socket-manager';
-import * as robot from '@jitsi/robotjs';
 import { IPCRoute } from '@/shared/constants';
 import StoreManager from '@/main/lib/store';
 import Store from 'electron-store';
 import { Socket } from 'socket.io-client';
 import { sleep } from '@/shared/utils';
 import { startMonitoring } from './lib/monitoring';
-import shutdownCommand from 'electron-shutdown-command';
 import { createTray } from './lib/tray-menu';
 import path from 'path';
 
@@ -32,7 +30,6 @@ const connectionUrl = store.get('socketUrl') as string;
 const databaseUrl = store.get('databaseUrl') as string;
 
 function setupSocketEventListeners(socket: Socket) {
-  let captureInterval: NodeJS.Timeout | null = null;
 
   console.log('Setting up socket event listeners', {
     connectionUrl,
@@ -42,95 +39,10 @@ function setupSocketEventListeners(socket: Socket) {
     userId: store.get('userId'),
   });
 
-  socket
-    .on('start_sharing', () => {
-      console.log('Starting screen sharing for device:', deviceId);
-      if (captureInterval) clearInterval(captureInterval);
-      captureInterval = setInterval(() => {
-        desktopCapturer
-          .getSources({
-            types: ['screen'],
-            thumbnailSize: { width: 1920, height: 1080 },
-          })
-          .then((sources) => {
-            const base64 = sources[0].thumbnail.toDataURL();
-            socket.emit('screen-share', { deviceId, screenData: base64 });
-          })
-          .catch((error) => console.error('Error capturing screen:', error));
-      }, 1000);
-    })
-    .on('stop_sharing', () => {
-      console.log('Stop sharing event received');
-      if (captureInterval) {
-        clearInterval(captureInterval);
-        captureInterval = null;
-      }
-    })
-    .on('mouse_move', ({ clientX, clientY, clientWidth, clientHeight }) => {
-      const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-      robot.moveMouse(
-        (clientX * width) / clientWidth,
-        (clientY * height) / clientHeight,
-      );
-    })
-    .on('mouse_click', (data) => {
-      if (data) robot.mouseClick(data.button, data.double);
-    })
-    .on('shutdown', ({ deviceId }) => {
-      if (deviceId === deviceId) {
-        shutdownCommand.shutdown();
-      }
-    })
-    .on('logoff', ({ deviceId }) => {
-      if (deviceId === deviceId) {
-        shutdownCommand.logoff();
-      }
-    })
-    .on('reboot', ({ deviceId: string }) => {
-      if (deviceId === string) {
-        shutdownCommand.reboot();
-      }
-    })
-    .on('mouse_scroll', ({ deltaX, deltaY }) =>
-      robot.scrollMouse(deltaX, deltaY),
-    )
-    .on(
-      'mouse_drag',
-      ({ direction, clientX, clientY, clientWidth, clientHeight }) => {
-        let mouseDirection: string | null = null;
-        if (direction !== mouseDirection) {
-          mouseDirection = direction;
-          robot.mouseToggle(direction);
-        }
-        const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-        robot.dragMouse(
-          (clientX * width) / clientWidth,
-          (clientY * height) / clientHeight,
-        );
-      },
-    )
-    .on('keyboard', (keys) => {
-      try {
-        if (
-          keys[1].length > 0 &&
-          keys[0].toLowerCase() !== keys[1][0].toLowerCase()
-        ) {
-          robot.keyToggle(keys[0], 'down', keys[1]);
-          robot.keyToggle(keys[0], 'up', keys[1]);
-        } else if (keys[1].length === 0) {
-          robot.keyTap(keys[0]);
-        }
-      } catch (e) {
-        console.error('Error processing keyboard event:', e);
-      }
-    })
-    .on('error', (error) => console.error('Socket error:', error))
-    .on('disconnect', (reason) =>
-      console.log('Disconnected from server:', reason),
-    )
-    .on('connect_error', (error) => console.log('Connect error:', error))
-    .on('connect_timeout', (error) => console.log('Connect timeout:', error));
-
+  socket.on('launch-webpage', ({url}) => {
+    shell.openExternal(url);
+  })
+  
   const handleDevice = () => {
     if (!deviceId || !labId) {
       const window = WindowManager.get(
@@ -202,14 +114,6 @@ function setupSocketEventListeners(socket: Socket) {
     }
 
     initializeDevice();
-    setInterval(() => {
-      const id = WindowManager.WINDOW_CONFIGS.main_window.id;
-      const status = getConnectionStatus();
-      const window = WindowManager.getWindow(id);
-      if (window) {
-        window.webContents.send(IPCRoute.CONNECTION_STATUS_UPDATE, status);
-      }
-    }, 1000);
   });
 }
 

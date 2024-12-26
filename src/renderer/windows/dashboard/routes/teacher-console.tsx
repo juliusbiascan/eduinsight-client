@@ -489,11 +489,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   const handleLaunchWebpage = () => {
     if (selectedSubject && peer) {
       for (const user of activeUsers) {
-        const conn = peer.connect(user.userId);
-        conn.on('open', () => {
-          conn.send({ type: 'webpage', url: webpageUrl });
-          conn.close();
-        });
+        socket.emit("launch-webpage", { deviceId: user.deviceId, url: webpageUrl });
       }
       toast({
         title: 'Webpage Launched',
@@ -725,7 +721,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
       return () => {
         socket.off('student-joined');
         socket.off('student-left');
-        
+        socket.off('student-logged-out');
       };
     }
   }, [socket, selectedSubject, fetchActiveUsers, handleScreenUpdate, toast]);

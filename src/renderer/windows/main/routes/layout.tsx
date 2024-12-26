@@ -1,33 +1,21 @@
+import { useSocket } from '@/renderer/components/socket-provider';
 import logo from '../../../assets/passlogo-small.png';
 import { Toaster } from '@/renderer/components/ui/toaster';
 import { motion } from 'framer-motion';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 
 const MainLayout = () => {
   const navigate = useNavigate();
-  const [connectionStatus, setConnectionStatus] = useState('disconnected');
-  const hasNavigated = useRef(false);
+  const { isConnected } = useSocket();
   
   useEffect(() => {
-
-    const unsubscribe = api.socket.connectionStatus((status) => {
-      setConnectionStatus(status);
-      if(status === "disconnected") {
-        navigate('/server-down');
-        hasNavigated.current = false;
-      } else if(status === "connected" && !hasNavigated.current) {
-        navigate('/');
-        hasNavigated.current = true;
-      }
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
-
-  const isConnected = connectionStatus === 'connected';
+    if(!isConnected) {
+      navigate('/server-down');
+    } else {
+      navigate('/');
+    }
+  }, [isConnected]);
 
   return (
     <div className="relative min-h-screen bg-[#F5F5F5] overflow-hidden">
@@ -91,7 +79,7 @@ const MainLayout = () => {
                     className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-[#C9121F]'} animate-pulse`}
                   ></div>
                   <span className="text-sm font-semibold text-[#1A1617] capitalize">
-                    {connectionStatus}
+                    {isConnected ? 'Online' : 'Offline'}
                   </span>
                 </div>
               </motion.div>
