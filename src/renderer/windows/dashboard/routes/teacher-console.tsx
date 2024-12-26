@@ -688,10 +688,12 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
 
 
   useEffect(() => {
-    if (socket && isConnected) {
-      socket.emit("join-server", selectedSubject?.id);
-      socket.on('join-subject', ({ _userId, subjectId }) => {
-        if (selectedSubject?.id === subjectId) {
+    if (socket && isConnected && selectedSubject) {
+      socket.emit("join-server", selectedSubject.id);
+      console.log("Joining server:", selectedSubject.name);
+
+      socket.on('student-joined', ({ _userId, subjectId }) => {
+        if (selectedSubject.id === subjectId) {
           fetchActiveUsers();
           toast({
             title: 'Student Joined',
@@ -700,24 +702,30 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
         }
       });
   
-      socket.on('student-logged-out', ({ _userId, subjectId }) => {
-        if (selectedSubject?.id === subjectId) {
+      socket.on('student-left', ({ _userId, subjectId }) => {
+        if (selectedSubject.id === subjectId) {
           fetchActiveUsers();
           toast({
-            title: 'Student Logged Out',
-            description: `A student has logged out from the subject.`,
+            title: 'Student Left',
+            description: `A student has left the subject.`,
           });
         }
       });
-  
-      socket.on('screen-share', ({ userId, stream }) => {
-        handleScreenUpdate(userId, stream);
+
+      socket.on('student-logged-out', ({ _userId, subjectId }) => {
+        if (selectedSubject.id === subjectId) {
+          fetchActiveUsers();
+          toast({
+            title: 'Student Logged Out',
+            description: `A student has logged out.`,
+          });
+        } 
       });
   
       return () => {
-        socket.off('join-subject');
-        socket.off('student-logged-out');
-        socket.off('screen-share');
+        socket.off('student-joined');
+        socket.off('student-left');
+        
       };
     }
   }, [socket, selectedSubject, fetchActiveUsers, handleScreenUpdate, toast]);

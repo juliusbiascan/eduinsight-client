@@ -302,6 +302,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
         user.id,
       );
       if (result.success) {
+        socket.emit('leave-subject', { userId: user.id, subjectId: selectedSubject.id });
         toast({ title: 'Success', description: 'Subject left successfully' });
         setSelectedSubject(null);
         fetchSubjects();
