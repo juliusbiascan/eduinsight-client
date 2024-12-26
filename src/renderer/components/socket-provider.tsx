@@ -1,16 +1,12 @@
-'use client';
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
-
-import { Socket } from 'socket.io-client';
 import { initSocket } from '../lib/socket';
+import { Socket } from 'socket.io-client';
 
 interface SocketContextType {
   socket: Socket | null;
   isConnected: boolean;
   transport: string;
   error: string;
-  reconnectAttempts: number;
 }
 
 const SocketContext = createContext<SocketContextType | null>(null);
@@ -21,11 +17,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     isConnected: false,
     transport: "N/A",
     error: "",
-    reconnectAttempts: 0,
   });
 
+
   useEffect(() => {
-    const socketInstance = initSocket();
+    console.log('Connecting to server:', "https://192.168.1.82:4000");
+    const socketInstance = initSocket("https://192.168.1.82:4000");
 
     function onConnect() {
       console.log('Connected to server');
@@ -34,8 +31,6 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         socket: socketInstance,
         isConnected: true,
         transport: socketInstance.io.engine.transport.name,
-        error: "",
-        reconnectAttempts: 0,
       }));
     }
 
@@ -45,26 +40,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         isConnected: false,
         transport: "N/A",
-        error: `Disconnected: ${reason}`,
       }));
     }
 
     function onConnectError(error: Error) {
       console.error('Connection error:', error);
-      setSocketState(prev => ({
-        ...prev,
-        error: error.message,
-        reconnectAttempts: prev.reconnectAttempts + 1,
-      }));
-
-      if (error.message.includes('net::ERR_FAILED')) {
-        console.error('WebSocket connection failed. This could be due to network issues, server unavailability, or SSL certificate problems.');
-      }
-
-      // Handle other specific errors
-      if (error.message.includes('net::ERR_CERT_AUTHORITY_INVALID')) {
-        console.error('SSL Certificate Error: The server\'s SSL certificate is not trusted.');
-      }
+      setSocketState(prev => ({ ...prev, error: error.message }));
     }
 
     socketInstance.on("connect", onConnect);

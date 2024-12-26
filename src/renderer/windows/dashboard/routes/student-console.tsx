@@ -33,7 +33,6 @@ import {
 import {
   Avatar,
   AvatarFallback,
-  AvatarImage,
 } from '@/renderer/components/ui/avatar';
 import { Badge } from '../../../components/ui/badge';
 import { usePeer } from '@/renderer/components/peer-provider';
@@ -44,6 +43,7 @@ import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, S
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@radix-ui/react-dropdown-menu';
+import { useSocket } from '@/renderer/components/socket-provider';
 
 interface StudentConsoleProps {
   user: DeviceUser;
@@ -52,10 +52,11 @@ interface StudentConsoleProps {
 
 export const StudentConsole: React.FC<StudentConsoleProps> = ({
   user,
-  handleLogout,
+  handleLogout: propsHandleLogout,
 }) => {
   const { toast } = useToast();
   const { peer } = usePeer();
+  const {socket} = useSocket();
   const [subjectCode, setSubjectCode] = useState('');
   const [subjects, setSubjects] = useState<
     (Subject & {
@@ -172,6 +173,12 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
     }
   }, [selectedSubject]);
 
+  useEffect(() => {
+    if (isScreenSharing && screenStream) {
+      socket.emit('share-screen', { userId: user.id, subjectId: selectedSubject?.id, stream: screenStream });
+    }
+  }, [isScreenSharing, screenStream, selectedSubject, socket]);
+
   const fetchSubjects = async () => {
     try {
       const data = await api.database.getStudentSubjects(user.id);
@@ -220,6 +227,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
           user.labId,
         );
         if (result.success) {
+          socket.emit('join-subject', { userId: user.id, subjectId: result.subjectId });
           toast({
             title: 'Success',
             description: 'Subject joined successfully',
@@ -344,6 +352,14 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
     api.window.hide(WindowIdentifier.Dashboard);
   };
 
+  const handleLogout = () => {
+    if (selectedSubject) {
+      socket.emit('logout-user', { userId: user.id, subjectId: selectedSubject.id });
+    }
+    // Call the original handleLogout function passed as a prop
+    propsHandleLogout();
+  };
+
   return (
     <SidebarProvider>
       <div className="min-h-screen w-screen bg-[#EAEAEB] flex">
@@ -437,7 +453,6 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                         className="flex items-center space-x-2"
                       >
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={'/default-avatar.png'} />
                           <AvatarFallback>
                             {user.firstName[0]}
                             {user.lastName[0]}
@@ -457,7 +472,6 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                       <div className="pt-4">
                         <div className="flex items-center justify-center mb-6">
                           <Avatar className="h-24 w-24">
-                            <AvatarImage src={'/default-avatar.png'} />
                             <AvatarFallback className="text-2xl">
                               {user.firstName[0]}
                               {user.lastName[0]}

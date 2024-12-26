@@ -29,7 +29,6 @@ import { generateSubjectCode } from '@/shared/utils';
 import {
   Avatar,
   AvatarFallback,
-  AvatarImage,
 } from '@/renderer/components/ui/avatar';
 import {
   LogOut,
@@ -95,6 +94,7 @@ import { Skeleton } from '@/renderer/components/ui/skeleton';
 import { MediaConnection } from 'peerjs';
 import { usePeer } from '@/renderer/components/peer-provider';
 import { Switch } from '@/renderer/components/ui/switch';
+import { useSocket } from '@/renderer/components/socket-provider';
 
 interface TeacherConsoleProps {
   user: DeviceUser & { subjects: Subject[] };
@@ -127,6 +127,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   recentLogin,
   handleLogout,
 }) => {
+  const {socket} = useSocket();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -274,24 +275,26 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     }
   };
 
+  const fetchActiveUsers = async () => {
+    const subjectRecords = await api.database.getSubjectRecordsBySubjectId(
+      selectedSubject.id,
+    );
+    setSubjectRecords(subjectRecords);
+
+    const activeUsers = await api.database.getActiveUsersBySubjectId(
+      selectedSubject.id,
+    );
+    setActiveUsers(activeUsers);
+
+    // Fetch student info for all records
+    subjectRecords.forEach((record: { userId: string }) => {
+      fetchStudentInfo(record.userId);
+    });
+  };
+
   useEffect(() => {
     if (selectedSubject) {
-      const fetchActiveUsers = async () => {
-        const subjectRecords = await api.database.getSubjectRecordsBySubjectId(
-          selectedSubject.id,
-        );
-        setSubjectRecords(subjectRecords);
-
-        const activeUsers = await api.database.getActiveUsersBySubjectId(
-          selectedSubject.id,
-        );
-        setActiveUsers(activeUsers);
-
-        // Fetch student info for all records
-        subjectRecords.forEach((record: { userId: string }) => {
-          fetchStudentInfo(record.userId);
-        });
-      };
+     
       fetchActiveUsers();
     }
   }, [selectedSubject, fetchStudentInfo]);
@@ -692,6 +695,40 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     [studentScreens, isStudentScreenMaximized],
   );
 
+  useEffect(() => {
+    if (socket) {
+      socket.on('student-joined', ({ _userId, subjectId }) => {
+        if (selectedSubject?.id === subjectId) {
+          fetchActiveUsers();
+          toast({
+            title: 'Student Joined',
+            description: `A student has joined the subject.`,
+          });
+        }
+      });
+  
+      socket.on('student-logged-out', ({ _userId, subjectId }) => {
+        if (selectedSubject?.id === subjectId) {
+          fetchActiveUsers();
+          toast({
+            title: 'Student Logged Out',
+            description: `A student has logged out from the subject.`,
+          });
+        }
+      });
+  
+      socket.on('screen-share', ({ userId, stream }) => {
+        handleScreenUpdate(userId, stream);
+      });
+  
+      return () => {
+        socket.off('student-joined');
+        socket.off('student-logged-out');
+        socket.off('screen-share');
+      };
+    }
+  }, [socket, selectedSubject, fetchActiveUsers, handleScreenUpdate, toast]);
+
   return (
     <SidebarProvider>
       <div className="min-h-screen w-screen bg-[#EAEAEB] flex">
@@ -854,7 +891,6 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                         className="flex items-center space-x-2"
                       >
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={'/default-avatar.png'} />
                           <AvatarFallback>
                             {user.firstName[0]}
                             {user.lastName[0]}
@@ -874,7 +910,6 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                       <div className="pt-4">
                         <div className="flex items-center justify-center mb-6">
                           <Avatar className="h-24 w-24">
-                            <AvatarImage src={'/default-avatar.png'} />
                             <AvatarFallback className="text-2xl">
                               {user.firstName[0]}
                               {user.lastName[0]}
@@ -1451,12 +1486,16 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            <Dialog open={isWebpageDialogOpen} onOpenChange={setIsWebpageDialogOpen}>
+            <Dialog
+              open={isWebpageDialogOpen}
+              onOpenChange={setIsWebpageDialogOpen}
+            >
               <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                   <DialogTitle>Launch Webpage</DialogTitle>
                   <DialogDescription>
-                    Enter the URL of the webpage you want to launch on student devices.
+                    Enter the URL of the webpage you want to launch on student
+                    devices.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
@@ -1474,6 +1513,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                 </div>
                 <DialogFooter>
                   <Button onClick={handleLaunchWebpage}>Launch</Button>
+                  <Button variant="outline" onClick={() => setIsWebpageDialogOpen(false)}>Cancel</Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>

@@ -227,7 +227,7 @@ export default {
         subjectCode,
         studentId,
         labId,
-      ) as Promise<{ success: boolean; message: string }>,
+      ) as Promise<{ success: boolean; message: string , subjectId: string}>,
     leaveSubject: (subjectId: string, studentId: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_LEAVE_SUBJECT,

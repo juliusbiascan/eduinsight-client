@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Peer, PeerOptions } from 'peerjs';
+import { Peer } from 'peerjs';
 
 // Define the context properties
 interface PeerContextProps {

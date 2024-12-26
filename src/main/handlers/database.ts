@@ -309,14 +309,14 @@ export default function () {
         return { success: false, message: 'Subject not found' };
       }
       try {
-        await Database.prisma.subjectRecord.create({
+        const result = await Database.prisma.subjectRecord.create({
           data: {
             subjectId: subject.id,
             userId: studentId,
             labId: labId,
           },
         });
-        return { success: true, message: 'Subject joined successfully' };
+        return { success: true, message: 'Subject joined successfully', subjectId: result.subjectId };
       } catch (error) {
         console.error('Error joining subject:', error);
         return { success: false, message: 'Failed to join subject' };

@@ -1,43 +1,50 @@
-import "../../styles/globals.css";
-import ReactDOM from "react-dom/client";
-import { Routes, Route, HashRouter } from "react-router-dom";
-import DashboardLayout from "./routes/dashboard-layout";
-import { GuestView } from "./routes/guest-view";
-import { Toaster } from "@/renderer/components/ui/toaster";
-import { useEffect, useState } from "react";
-import { ActiveUserLogs, Device, DeviceUser, Subject } from "@prisma/client";
-import { useToast } from "@/renderer/hooks/use-toast";
-import { WindowIdentifier } from "@/shared/constants";
-import { StudentConsole} from "./routes/student-console";
-import { TeacherConsole } from "./routes/teacher-console";
-import StudentProgressReport from "./routes/analytics/student-progress";
-import StudentQuizResults from "./routes/results/quiz-results";
-import QuizLibrary from "./routes/quiz/quiz-library";
-import QuizManager from "./routes/quiz/quiz-manager";
-import QuizQuestions from "./routes/quiz/quiz-questions";
-
+import '../../styles/globals.css';
+import ReactDOM from 'react-dom/client';
+import { Routes, Route, HashRouter } from 'react-router-dom';
+import DashboardLayout from './routes/dashboard-layout';
+import { GuestView } from './routes/guest-view';
+import { Toaster } from '@/renderer/components/ui/toaster';
+import { useEffect, useState } from 'react';
+import { ActiveUserLogs, Device, DeviceUser, Subject } from '@prisma/client';
+import { useToast } from '@/renderer/hooks/use-toast';
+import { WindowIdentifier } from '@/shared/constants';
+import { StudentConsole } from './routes/student-console';
+import { TeacherConsole } from './routes/teacher-console';
+import StudentProgressReport from './routes/analytics/student-progress';
+import StudentQuizResults from './routes/results/quiz-results';
+import QuizLibrary from './routes/quiz/quiz-library';
+import QuizManager from './routes/quiz/quiz-manager';
+import QuizQuestions from './routes/quiz/quiz-questions';
+import { SocketProvider } from '@/renderer/components/socket-provider';
 
 function Index() {
-  const [user, setUser] = useState<DeviceUser & { subjects: Subject[] } | null>(null);
+  const [user, setUser] = useState<
+    (DeviceUser & { subjects: Subject[] }) | null
+  >(null);
   const [device, setDevice] = useState<Device | null>(null);
   const [recentLogin, setRecentLogin] = useState<ActiveUserLogs | null>(null);
   const [loading, setLoading] = useState(true);
-  const { toast } = useToast()
-
+  const { toast } = useToast();
 
   useEffect(() => {
-
     const fetchUserData = async () => {
       try {
         const devices = await api.database.getDevice();
         if (devices && devices.length > 0) {
           setDevice(devices[0]);
-          const activeUsers = await api.database.getActiveUserByDeviceId(devices[0].id, devices[0].labId);
+          const activeUsers = await api.database.getActiveUserByDeviceId(
+            devices[0].id,
+            devices[0].labId,
+          );
           if (activeUsers && activeUsers.length > 0) {
-            const users = await api.database.getDeviceUserByActiveUserId(activeUsers[0].userId);
+            const users = await api.database.getDeviceUserByActiveUserId(
+              activeUsers[0].userId,
+            );
             if (users && users.length > 0) {
               setUser(users[0]);
-              const recentLogin = await api.database.getUserRecentLoginByUserId(users[0].id);
+              const recentLogin = await api.database.getUserRecentLoginByUserId(
+                users[0].id,
+              );
               if (recentLogin && recentLogin.length > 0) {
                 setRecentLogin(recentLogin[1]);
               }
@@ -45,12 +52,12 @@ function Index() {
           }
         }
       } catch (error) {
-        console.error("Error fetching user data:", error);
+        console.error('Error fetching user data:', error);
         toast({
-          title: "Error",
-          description: "Failed to fetch user data",
-          variant: "destructive",
-        })
+          title: 'Error',
+          description: 'Failed to fetch user data',
+          variant: 'destructive',
+        });
       } finally {
         setLoading(false);
       }
@@ -75,8 +82,8 @@ function Index() {
 
     api.window.open(WindowIdentifier.Main);
     toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out.",
+      title: 'Logged Out',
+      description: 'You have been successfully logged out.',
     });
 
     // Reset user state or redirect to login page
@@ -84,21 +91,41 @@ function Index() {
     setDevice(null);
   };
 
-  return <HashRouter>
-    <Routes>
-      <Route path="/" element={<DashboardLayout />}>
-        <Route index element={<GuestView />} />
-        <Route path="student" element={<StudentConsole user={user} handleLogout={handleLogout} />} />
-        <Route path="teacher" element={<TeacherConsole user={user} recentLogin={recentLogin} handleLogout={handleLogout} />} />
-        <Route path="analytics/student-progress/:id" element={<StudentProgressReport />} />
-        <Route path="results/quiz-results/:id" element={<StudentQuizResults />} />
-        <Route path="quiz/library/:id" element={<QuizLibrary />} />
-        <Route path="quiz/manager" element={<QuizManager />} />
-        <Route path="quiz/questions" element={<QuizQuestions />} />
-      </Route>
-    </Routes>
-    <Toaster />
-  </HashRouter>
+  return (
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<DashboardLayout />}>
+          <Route index element={<GuestView />} />
+          <Route
+            path="student"
+            element={<StudentConsole user={user} handleLogout={handleLogout} />}
+          />
+          <Route
+            path="teacher"
+            element={
+              <TeacherConsole
+                user={user}
+                recentLogin={recentLogin}
+                handleLogout={handleLogout}
+              />
+            }
+          />
+          <Route
+            path="analytics/student-progress/:id"
+            element={<StudentProgressReport />}
+          />
+          <Route
+            path="results/quiz-results/:id"
+            element={<StudentQuizResults />}
+          />
+          <Route path="quiz/library/:id" element={<QuizLibrary />} />
+          <Route path="quiz/manager" element={<QuizManager />} />
+          <Route path="quiz/questions" element={<QuizQuestions />} />
+        </Route>
+      </Routes>
+      <Toaster />
+    </HashRouter>
+  );
 }
 
 /**
@@ -116,5 +143,9 @@ function Index() {
   }
 
   // render the react application
-  ReactDOM.createRoot(container).render(<Index />);
+  ReactDOM.createRoot(container).render(
+    <SocketProvider>
+      <Index />
+    </SocketProvider>,
+  );
 })();
