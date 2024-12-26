@@ -105,10 +105,19 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   useEffect(() => {
     if (peer) {
       peer.on("connection", (conn) => {
-        conn.on("data", (data: { type: string; url?: string }) => {
+        conn.on("data", (data: { type: string; url?: string; file?: { name: string; content: Blob } }) => {
           console.log("Received data:", data);
           if (data.type === "webpage" && data.url) {
             api.window.openExternalLink(data.url);
+          } else if (data.type === "file" && data.file) {
+            const url = URL.createObjectURL(data.file.content);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = data.file.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
           }
         });
       });
