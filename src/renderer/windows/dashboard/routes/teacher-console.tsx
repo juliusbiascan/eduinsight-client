@@ -26,10 +26,7 @@ import { Input } from '@/renderer/components/ui/input';
 import { Label } from '@/renderer/components/ui/label';
 import { Textarea } from '@/renderer/components/ui/textarea';
 import { generateSubjectCode } from '@/shared/utils';
-import {
-  Avatar,
-  AvatarFallback,
-} from '@/renderer/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/renderer/components/ui/avatar';
 import {
   LogOut,
   PlusCircle,
@@ -127,7 +124,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   recentLogin,
   handleLogout,
 }) => {
-  const {socket, isConnected} = useSocket();
+  const { socket, isConnected } = useSocket();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -159,7 +156,6 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   const [isWebpageDialogOpen, setIsWebpageDialogOpen] = useState(false);
   const [webpageUrl, setWebpageUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [fileProgress, setFileProgress] = useState<number>(0);
 
   const handleMaximizeStudentScreen = () => {
@@ -294,7 +290,6 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
 
   useEffect(() => {
     if (selectedSubject) {
-     
       fetchActiveUsers();
     }
   }, [selectedSubject, fetchStudentInfo]);
@@ -489,7 +484,10 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   const handleLaunchWebpage = () => {
     if (selectedSubject && peer) {
       for (const user of activeUsers) {
-        socket.emit("launch-webpage", { deviceId: user.deviceId, url: webpageUrl });
+        socket.emit('launch-webpage', {
+          deviceId: user.deviceId,
+          url: webpageUrl,
+        });
       }
       toast({
         title: 'Webpage Launched',
@@ -500,53 +498,12 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     }
   };
 
-  const handleShareFile = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
+  const CHUNK_SIZE = 1024 * 1024; // 1MB
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    
+
     if (file && selectedSubject) {
-        const reader = new FileReader();
-        reader.onprogress = (e) => {
-            if (e.lengthComputable) {
-                const progress = (e.loaded / e.total) * 100;
-                setFileProgress(progress);
-            }
-        };
-        reader.onload = () => {
-            const content = reader.result as ArrayBuffer;
-            const base64File = Buffer.from(content).toString('base64');
-            for (const user of activeUsers) {
-                socket.emit("upload-file", { deviceId: user.deviceId, file: base64File, filename: file.name, subjectName: selectedSubject.name });
-            }
-            toast({
-                title: 'File Shared',
-                description: 'The file has been shared with student devices.',
-            });
-            setFileProgress(0);
-        };
-        reader.readAsArrayBuffer(file);
-    }
-};
-
-  const handleDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  const handleDrop = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    setIsDragging(false);
-    const file = event.dataTransfer.files[0];
-    if (file && selectedSubject && peer) {
       const reader = new FileReader();
       reader.onprogress = (e) => {
         if (e.lengthComputable) {
@@ -556,12 +513,22 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
       };
       reader.onload = () => {
         const content = reader.result as ArrayBuffer;
-        for (const user of activeUsers) {
-          const conn = peer.connect(user.userId);
-          conn.on('open', () => {
-            conn.send({ type: 'file', file: { name: file.name, content: new Blob([content]) } });
-            conn.close();
-          });
+        const totalChunks = Math.ceil(content.byteLength / CHUNK_SIZE);
+        for (let i = 0; i < totalChunks; i++) {
+          const chunk = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+          const base64Chunk = btoa(
+            String.fromCharCode(...new Uint8Array(chunk)),
+          );
+          for (const user of activeUsers) {
+            socket.emit('upload-file-chunk', {
+              deviceId: user.deviceId,
+              chunk: base64Chunk,
+              filename: file.name,
+              subjectName: selectedSubject.name,
+              chunkIndex: i,
+              totalChunks,
+            });
+          }
         }
         toast({
           title: 'File Shared',
@@ -571,7 +538,13 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
       };
       reader.readAsArrayBuffer(file);
     }
-  }, [selectedSubject, peer, activeUsers, toast]);
+  };
+
+  const handleShareFile = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
 
   // Update the renderStudentScreen function to include click handling
   const renderStudentScreen = useCallback(
@@ -680,11 +653,10 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     [studentScreens, isStudentScreenMaximized],
   );
 
-
   useEffect(() => {
     if (socket && isConnected && selectedSubject) {
-      socket.emit("join-server", selectedSubject.id);
-      console.log("Joining server:", selectedSubject.name);
+      socket.emit('join-server', selectedSubject.id);
+      console.log('Joining server:', selectedSubject.name);
 
       socket.on('student-joined', ({ _userId, subjectId }) => {
         if (selectedSubject.id === subjectId) {
@@ -695,7 +667,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
           });
         }
       });
-  
+
       socket.on('student-left', ({ _userId, subjectId }) => {
         if (selectedSubject.id === subjectId) {
           fetchActiveUsers();
@@ -713,9 +685,9 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
             title: 'Student Logged Out',
             description: `A student has logged out.`,
           });
-        } 
+        }
       });
-  
+
       return () => {
         socket.off('student-joined');
         socket.off('student-left');
@@ -1004,50 +976,40 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
               <div className="flex justify-between items-center h-14">
                 <div className="flex space-x-4">
                   {/* Share Button */}
-                  <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    className={`relative ${isDragging ? 'border-2 border-dashed border-blue-500' : ''}`}
-                  >
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="flex items-center space-x-2">
-                          <Share className="h-4 w-4" />
-                          <span>Share</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem
-                          onClick={isScreenSharing ? handleStopScreenShare : handleStartScreenShare}
-                        >
-                          <MonitorPlay className="h-4 w-4 mr-2" />
-                          {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleShareFile}>
-                          <FileUp className="h-4 w-4 mr-2" />
-                          Share Files
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      style={{ display: 'none' }}
-                      onChange={handleFileChange}
-                    />
-                    {isDragging && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-75">
-                        <p className="text-lg font-semibold text-blue-500">Drop file to share</p>
-                      </div>
-                    )}
-                    {fileProgress > 0 && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-75">
-                        <p className="text-lg font-semibold text-blue-500">Uploading... {fileProgress.toFixed(0)}%</p>
-                      </div>
-                    )}
-                  </div>
-                  
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="flex items-center space-x-2"
+                      >
+                        <Share className="h-4 w-4" />
+                        <span>Share</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem
+                        onClick={
+                          isScreenSharing
+                            ? handleStopScreenShare
+                            : handleStartScreenShare
+                        }
+                      >
+                        <MonitorPlay className="h-4 w-4 mr-2" />
+                        {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleShareFile}>
+                        <FileUp className="h-4 w-4 mr-2" />
+                        Share Files
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    style={{ display: 'none' }}
+                    onChange={handleFileChange}
+                  />
 
                   {/* Actions Button */}
                   <DropdownMenu>
@@ -1061,7 +1023,9 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => setIsWebpageDialogOpen(true)}>
+                      <DropdownMenuItem
+                        onClick={() => setIsWebpageDialogOpen(true)}
+                      >
                         Launch Webpage
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -1206,6 +1170,13 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
               </div>
             </div>
           </div>
+          {fileProgress > 0 && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-75">
+              <p className="text-lg font-semibold text-blue-500">
+                Uploading... {fileProgress.toFixed(0)}%
+              </p>
+            </div>
+          )}
 
           <main className="px-4 sm:px-6 lg:px-8 py-4 relative h-[calc(100vh-8rem)] overflow-y-auto">
             {isLoading ? (
@@ -1508,7 +1479,12 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                 </div>
                 <DialogFooter>
                   <Button onClick={handleLaunchWebpage}>Launch</Button>
-                  <Button variant="outline" onClick={() => setIsWebpageDialogOpen(false)}>Cancel</Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsWebpageDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>

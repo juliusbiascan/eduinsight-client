@@ -41,21 +41,33 @@ function setupSocketEventListeners(socket: Socket) {
     userId: store.get('userId'),
   });
 
+  const fileChunks: Record<string, { chunks: string[], totalChunks: number }> = {};
+
   socket.on('launch-webpage', ({url}) => {
     shell.openExternal(url);
   })
 
-  socket.on("upload-file", ({ file, filename, subjectName }) => {
-    const buffer = Buffer.from(file, 'base64');
-    const subjectFolderPath = path.join(app.getPath('downloads'), subjectName);
-    if (!fs.existsSync(subjectFolderPath)) {
-        fs.mkdirSync(subjectFolderPath);
+
+  socket.on("upload-file-chunk", ({ chunk, filename, subjectName, chunkIndex, totalChunks }) => {
+    if (!fileChunks[filename]) {
+      fileChunks[filename] = { chunks: [], totalChunks };
     }
-    writeFile(path.join(subjectFolderPath, filename), buffer, (err) => {
+    fileChunks[filename].chunks[chunkIndex] = chunk;
+
+    if (fileChunks[filename].chunks.filter(Boolean).length === totalChunks) {
+      const fileContent = fileChunks[filename].chunks.join('');
+      const buffer = Buffer.from(fileContent, 'base64');
+      const subjectFolderPath = path.join(app.getPath('downloads'), subjectName);
+      if (!fs.existsSync(subjectFolderPath)) {
+        fs.mkdirSync(subjectFolderPath);
+      }
+      writeFile(path.join(subjectFolderPath, filename), buffer, (err) => {
         if (err) {
-            console.error("Failed to save file:", err);
+          console.error("Failed to save file:", err);
         }
-    });
+      });
+      delete fileChunks[filename];
+    }
   });
 
   const handleDevice = () => {
