@@ -101,34 +101,33 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const screenShareInterval = useRef<NodeJS.Timeout>();
   const connection = useRef<MediaConnection | null>(null);
-  const [teacherScreenStream, setTeacherScreenStream] =
-    useState<MediaStream | null>(null);
 
   useEffect(() => {
     if (peer) {
-      peer.on('connection', (conn) => {
-        conn.on('data', (data: { type: string; url?: string }) => {
-          console.log('Received data:', data);
-          if (data.type === 'webpage' && data.url) {
+      peer.on("connection", (conn) => {
+        conn.on("data", (data: { type: string; url?: string }) => {
+          console.log("Received data:", data);
+          if (data.type === "webpage" && data.url) {
             api.window.openExternalLink(data.url);
           }
         });
       });
-
+      
       peer.on('call', (call) => {
         console.log('Received call from peer:', call.peer);
         if (screenStream) {
-          call.answer(screenStream); // Answer the call without sending any stream
-          call.on('stream', (remoteStream) => {
+          call.answer(screenStream); // Answer the call with the screen stream
+          call.on('stream', (_remoteStream) => {
             console.log('Received stream from teacher');
-            setTeacherScreenStream(remoteStream);
           });
 
           call.on('close', () => {
             console.log('Call closed');
-            setTeacherScreenStream(null);
           });
+
           connection.current = call;
+        } else {
+          console.log('No screen stream available to answer the call');
         }
       });
 
@@ -136,7 +135,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
         console.error('PeerJS error:', error);
       });
     }
-  }, [peer]);
+  }, [screenStream, peer]);
 
   useEffect(() => {
     fetchSubjects();
@@ -428,25 +427,6 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
 
       {/* Main content */}
       <main className="flex-grow p-4 overflow-y-auto relative no-scrollbar">
-        {/* Teacher Screen */}
-        {teacherScreenStream && (
-          <div className="fixed inset-0 z-50 bg-black bg-opacity-75 flex items-center justify-center">
-            <video
-              ref={(el) => {
-                if (el) {
-                  el.srcObject = teacherScreenStream;
-                  el.onloadedmetadata = () => {
-                    el.play().catch((error) => {
-                      console.error('Error playing video:', error);
-                    });
-                  };
-                }
-              }}
-              className="w-full h-full object-contain"
-            />
-          </div>
-        )}
-
         {/* Subject Selection */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border-l-4 border-[#C9121F]">
           <h2 className="text-xl font-bold mb-4 text-[#1A1617] flex items-center">
