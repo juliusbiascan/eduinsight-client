@@ -56,7 +56,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
 }) => {
   const { toast } = useToast();
   const { peer } = usePeer();
-  const {socket} = useSocket();
+  const {socket, isConnected} = useSocket();
   const [subjectCode, setSubjectCode] = useState('');
   const [subjects, setSubjects] = useState<
     (Subject & {
@@ -124,6 +124,10 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   }, [screenStream, peer]);
 
   useEffect(() => {
+    if (!socket || !isConnected) {
+      return;
+    }
+    socket.emit("join-server", user.id);
     fetchSubjects();
   }, [user.id]);
 

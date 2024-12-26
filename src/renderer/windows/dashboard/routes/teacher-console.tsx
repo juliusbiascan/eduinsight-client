@@ -127,7 +127,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   recentLogin,
   handleLogout,
 }) => {
-  const {socket} = useSocket();
+  const {socket, isConnected} = useSocket();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -422,7 +422,6 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
           });
 
           screenShareStream.current = stream;
-          setIsScreenSharing(true);
 
           activeUsers.forEach((user) => {
             if (!callConnections.current[user.userId]) {
@@ -484,15 +483,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   };
 
   const handleStopScreenShare = () => {
-    // if (screenShareStream.current) {
-    //   screenShareStream.current.getTracks().forEach((track) => track.stop());
-    //   screenShareStream.current = null;
-    //   setIsScreenSharing(false);
-    //   toast({
-    //     title: 'Screen Sharing Stopped',
-    //     description: 'You have stopped sharing your screen.',
-    //   });
-    // }
+    setIsScreenSharing(false);
   };
 
   const handleLaunchWebpage = () => {
@@ -695,9 +686,11 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     [studentScreens, isStudentScreenMaximized],
   );
 
+
   useEffect(() => {
-    if (socket) {
-      socket.on('student-joined', ({ _userId, subjectId }) => {
+    if (socket && isConnected) {
+      socket.emit("join-server", selectedSubject?.id);
+      socket.on('join-subject', ({ _userId, subjectId }) => {
         if (selectedSubject?.id === subjectId) {
           fetchActiveUsers();
           toast({
@@ -722,7 +715,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
       });
   
       return () => {
-        socket.off('student-joined');
+        socket.off('join-subject');
         socket.off('student-logged-out');
         socket.off('screen-share');
       };
