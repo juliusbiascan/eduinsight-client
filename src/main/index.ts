@@ -21,6 +21,7 @@ import { Socket } from 'socket.io-client';
 import { sleep } from '@/shared/utils';
 import { startMonitoring } from './lib/monitoring';
 import { createTray } from './lib/tray-menu';
+import { writeFile } from "fs";
 import path from 'path';
 
 const store = StoreManager.getInstance();
@@ -42,7 +43,15 @@ function setupSocketEventListeners(socket: Socket) {
   socket.on('launch-webpage', ({url}) => {
     shell.openExternal(url);
   })
-  
+
+  socket.on("upload-file", ({file, subjectName}) => {
+    writeFile(path.join(app.getPath('downloads'), subjectName), file, (err) => {
+      if (err) {
+        console.error("Failed to save file:", err);
+      }
+    });
+  });
+
   const handleDevice = () => {
     if (!deviceId || !labId) {
       const window = WindowManager.get(

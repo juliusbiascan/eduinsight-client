@@ -18,7 +18,7 @@ import {
   Menu,
 } from 'lucide-react';
 import { Toaster } from '../../../components/ui/toaster';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import {
@@ -76,31 +76,27 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
 
-  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const screenShareInterval = useRef<NodeJS.Timeout>();
   const connection = useRef<MediaConnection | null>(null);
-  const [fileProgress, setFileProgress] = useState<number>(0);
-  const [isFileDialogOpen, setIsFileDialogOpen] = useState<boolean>(false);
-  const [receivedFile, setReceivedFile] = useState<{ name: string; url: string } | null>(null);
-
+  
   useEffect(() => {
     if (peer) {
-      peer.on("connection", (conn) => {
-        conn.on("data", (data: { type: string; url?: string; file?: { name: string; content: Blob } }) => {
-          console.log("Received data:", data);
-          if (data.type === "file" && data.file) {
-            const url = URL.createObjectURL(data.file.content);
-            setReceivedFile({ name: data.file.name, url });
-            setIsFileDialogOpen(true);
-          }
-        });
-      });
-      
-      peer.on('call', (call) => {
+      peer.on('call',async (call) => {
         console.log('Received call from peer:', call.peer);
-        if (screenStream) {
-          call.answer(screenStream); // Answer the call with the screen stream
+        const sourceId = await api.screen.getScreenSourceId();
+          const stream = await (navigator.mediaDevices as any).getUserMedia({
+            audio: false,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: sourceId,
+                maxWidth: 1280,
+                maxHeight: 720,
+                frameRate: { ideal: 15, max: 30 },
+              },
+            },
+          });
+        if (stream) {
+          call.answer(stream); // Answer the call with the screen stream
           call.on('stream', (_remoteStream) => {
             console.log('Received stream from teacher');
           });
@@ -119,7 +115,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
         console.error('PeerJS error:', error);
       });
     }
-  }, [screenStream, peer]);
+  }, [peer]);
 
   useEffect(() => {
     if (!socket || !isConnected) {
@@ -128,58 +124,6 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
     socket.emit("join-server", user.id);
     fetchSubjects();
   }, [user.id]);
-
-  useEffect(() => {
-    if (selectedSubject && !isScreenSharing) {
-      const startScreenShare = async () => {
-        try {
-          const sourceId = await api.screen.getScreenSourceId();
-          const stream = await (navigator.mediaDevices as any).getUserMedia({
-            audio: false,
-            video: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: sourceId,
-                maxWidth: 1280,
-                maxHeight: 720,
-                frameRate: { ideal: 15, max: 30 },
-              },
-            },
-          });
-
-          setScreenStream(stream);
-          setIsScreenSharing(true);
-
-          return () => {
-            if (screenShareInterval.current) {
-              clearInterval(screenShareInterval.current);
-            }
-            if (screenStream) {
-              screenStream.getTracks().forEach((track) => track.stop());
-              setScreenStream(null);
-            }
-            setIsScreenSharing(false);
-            api.screen.stopScreenShare();
-          };
-        } catch (error) {
-          console.error('Error starting screen share:', error);
-          toast({
-            title: 'Screen Share Error',
-            description: 'Failed to start screen sharing',
-            variant: 'destructive',
-          });
-        }
-      };
-
-      startScreenShare();
-    }
-  }, [selectedSubject]);
-
-  useEffect(() => {
-    if (isScreenSharing && screenStream) {
-      socket.emit('share-screen', { userId: user.id, subjectId: selectedSubject?.id, stream: screenStream });
-    }
-  }, [isScreenSharing, screenStream, selectedSubject, socket]);
 
   const fetchSubjects = async () => {
     try {
@@ -336,20 +280,6 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   };
 
 
-  const handleDownloadFile = useCallback(() => {
-    if (receivedFile) {
-      const a = document.createElement('a');
-      a.href = receivedFile.url;
-      a.download = receivedFile.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(receivedFile.url);
-      setIsFileDialogOpen(false);
-      setReceivedFile(null);
-      setFileProgress(0);
-    }
-  }, [receivedFile]);
 
   const handleMinimizeWindow = () => {
     api.window.hide(WindowIdentifier.Dashboard);
@@ -679,9 +609,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                   <TabsTrigger value="unpublished">
                     Unpublished ({selectedSubject?.quizzes.filter(quiz => !quiz.published).length})
                   </TabsTrigger>
-                  <TabsTrigger value="received-files">
-                    Received Files
-                  </TabsTrigger>
+                
                 </TabsList>
 
                 <TabsContent value="published">
@@ -761,32 +689,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                   </ScrollArea>
                 </TabsContent>
 
-                <TabsContent value="received-files">
-                  <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
-                    <div className="space-y-2">
-                      {receivedFile ? (
-                        <div className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100">
-                          <div className="flex items-center space-x-2">
-                            <div>
-                              <p className="text-sm font-medium">
-                                {receivedFile.name}
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            size="sm"
-                            className="ml-2"
-                            onClick={handleDownloadFile}
-                          >
-                            Download
-                          </Button>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500">No files received.</p>
-                      )}
-                    </div>
-                  </ScrollArea>
-                </TabsContent>
+            
               </Tabs>
             </div>
             <Toaster />
@@ -818,45 +721,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            <Dialog open={isFileDialogOpen} onOpenChange={setIsFileDialogOpen}>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>File Received</DialogTitle>
-                  <DialogDescription>
-                    You have received a file. Click the button below to download it.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="file-name" className="text-right">
-                      File
-                    </Label>
-                    <Input
-                      id="file-name"
-                      value={receivedFile?.name || ''}
-                      readOnly
-                      className="col-span-3"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="file-progress" className="text-right">
-                      Progress
-                    </Label>
-                    <progress
-                      id="file-progress"
-                      value={fileProgress}
-                      max="100"
-                      className="col-span-3"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={handleDownloadFile}>
-                    Download
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            
           </main>
         </div>
       </div>

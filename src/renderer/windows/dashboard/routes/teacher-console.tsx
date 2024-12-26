@@ -508,7 +508,8 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && selectedSubject && peer) {
+    
+    if (file && selectedSubject) {
       const reader = new FileReader();
       reader.onprogress = (e) => {
         if (e.lengthComputable) {
@@ -519,11 +520,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
       reader.onload = () => {
         const content = reader.result as ArrayBuffer;
         for (const user of activeUsers) {
-          const conn = peer.connect(user.userId);
-          conn.on('open', () => {
-            conn.send({ type: 'file', file: { name: file.name, content: new Blob([content]) } });
-            conn.close();
-          });
+          socket.emit("upload-file", { deviceId: user.deviceId, file: { name: file.name, content: new Blob([content]) }, subjectName: selectedSubject.name });
         }
         toast({
           title: 'File Shared',
