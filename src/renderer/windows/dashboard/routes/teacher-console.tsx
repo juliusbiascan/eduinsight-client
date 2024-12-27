@@ -565,7 +565,7 @@ export const TeacherConsole = () => {
   };
 
   const handleLaunchWebpage = () => {
-    if (selectedSubject && peer) {
+    if (selectedSubject) {
       for (const user of activeUsers) {
         socket.emit('launch-webpage', {
           deviceId: user.deviceId,
@@ -777,7 +777,7 @@ export const TeacherConsole = () => {
         socket.off('student-logged-out');
       };
     }
-  }, [socket, selectedSubject, fetchActiveUsers, handleScreenUpdate, toast]);
+  }, [socket, selectedSubject, fetchActiveUsers]);
 
   const handleLiveQuiz = () => {
     //TODO: Implement live quiz

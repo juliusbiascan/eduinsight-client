@@ -70,7 +70,7 @@ function setupSocketEventListeners(socket: Socket) {
   });
 
   socket.on('show-screen', ({deviceId, userId}) => {
-    const window = WindowManager.get(WindowManager.WINDOW_CONFIGS.welcome_window.id);
+    const window = WindowManager.get(WindowManager.WINDOW_CONFIGS.screen_window.id);
     window.webContents.send('show-screen', {deviceId, userId});
   });
 

@@ -14,4 +14,5 @@ declare const DASHBOARD_WINDOW_WEBPACK_ENTRY: string;
 declare const DASHBOARD_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 declare const QUIZ_PLAYER_WINDOW_WEBPACK_ENTRY: string;
 declare const QUIZ_PLAYER_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
-
+declare const SCREEN_WINDOW_WEBPACK_ENTRY: string;
+declare const SCREEN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;

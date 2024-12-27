@@ -20,6 +20,7 @@ export enum WindowIdentifier {
   Logout = 'logout_window',
   Splash = 'splash_window',
   QuizPlayer = 'quiz_player_window',
+  Screen = 'screen_window',
 }
 
 /**

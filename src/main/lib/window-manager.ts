@@ -105,6 +105,23 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
       skipTaskbar: true,
     },
   },
+  [WindowIdentifier.Screen]: {
+    id: WindowIdentifier.Screen,
+    url: SCREEN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+    options: {
+      title: 'Screen Monitoring',
+      ...baseWindowConfig,
+      width: 600,
+      height: 200,
+      useContentSize: true,
+      show: false,
+      frame: false,
+      resizable: false,
+      alwaysOnTop: true,
+      transparent: true,
+      skipTaskbar: true,
+    },
+  },
   [WindowIdentifier.Main]: {
     id: WindowIdentifier.Main,
     url: MAIN_WINDOW_WEBPACK_ENTRY,
@@ -212,7 +229,7 @@ function create(
     }else  if(input.code == "F11") event.preventDefault();
   });
 
-  if (id === WindowIdentifier.Welcome) {
+  if (id === WindowIdentifier.Welcome || id === WindowIdentifier.Screen) {
     window.webContents.on('did-finish-load', () => {
       const windowBounds = window.getBounds();
       const workAreaSize = screen.getPrimaryDisplay().workAreaSize;
