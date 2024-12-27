@@ -6,13 +6,15 @@ import { useToast } from '@/renderer/hooks/use-toast';
 import {
   ActiveDeviceUser,
   ActiveUserLogs,
+  Device,
   DeviceUser,
+  Quiz,
+  QuizQuestion,
   Subject,
   SubjectRecord,
 } from '@prisma/client';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { WindowIdentifier } from '@/shared/constants';
-import { formatDistance } from 'date-fns';
 import {
   Dialog,
   DialogContent,
@@ -30,7 +32,6 @@ import { Avatar, AvatarFallback } from '@/renderer/components/ui/avatar';
 import {
   LogOut,
   PlusCircle,
-  RefreshCw,
   Users,
   Menu,
   Share,
@@ -88,16 +89,11 @@ import {
   TabsTrigger,
 } from '@/renderer/components/ui/tabs';
 import { Skeleton } from '@/renderer/components/ui/skeleton';
-import { MediaConnection } from 'peerjs';
+//import { MediaConnection } from 'peerjs';
 import { usePeer } from '@/renderer/components/peer-provider';
 import { Switch } from '@/renderer/components/ui/switch';
 import { useSocket } from '@/renderer/components/socket-provider';
-
-interface TeacherConsoleProps {
-  user: DeviceUser & { subjects: Subject[] };
-  recentLogin: ActiveUserLogs | null;
-  handleLogout: () => void;
-}
+import { formatDistance } from 'date-fns';
 
 interface StudentInfo {
   id: string;
@@ -119,14 +115,16 @@ interface StudentScreenState {
   };
 }
 
-export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
-  user,
-  recentLogin,
-  handleLogout,
-}) => {
+export const TeacherConsole = () => {
   const { socket, isConnected } = useSocket();
-  const navigate = useNavigate();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const [user, setUser] = useState<
+    DeviceUser & {
+      subjects: Subject[];
+      ActiveUserLogs: ActiveUserLogs[];
+    }
+  >();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [newSubjectName, setNewSubjectName] = useState<string>('');
@@ -150,13 +148,25 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   const [isStudentScreenMaximized, setIsStudentScreenMaximized] =
     useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const screenShareStream = useRef<MediaStream | null>(null);
-  const callConnections = useRef<Record<string, MediaConnection>>({});
+  //const callConnections = useRef<Record<string, MediaConnection>>({});
   const [showScreens, setShowScreens] = useState<boolean>(false);
   const [isWebpageDialogOpen, setIsWebpageDialogOpen] = useState(false);
   const [webpageUrl, setWebpageUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [fileProgress, setFileProgress] = useState<number>(0);
+  const [isBeginQuizDialogOpen, setIsBeginQuizDialogOpen] = useState(false);
+  const [selectedQuiz, setSelectedQuiz] = useState<string | null>(null);
+  const [quizzes, setQuizzes] =
+    useState<Array<Quiz & { questions: Array<QuizQuestion> }>>();
+
+  const handleStartLiveQuiz = () => {
+    // Placeholder for starting a live quiz
+    toast({
+      title: 'Live Quiz',
+      description: 'Live quiz functionality will be available soon.',
+      variant: 'default',
+    });
+  };
 
   const handleMaximizeStudentScreen = () => {
     setIsStudentScreenMaximized(true);
@@ -188,30 +198,88 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   }, []);
 
   useEffect(() => {
-    const fetchSubjects = () => {
-      setIsLoading(true);
+    api.database.getDevice().then((device: Device) => {
+      api.database
+        .getActiveUserByDeviceId(device.id, device.labId)
+        .then((activeUser) => {
+          if (activeUser) {
+            setUser(activeUser.user);
+          } else {
+            toast({
+              title: 'Error',
+              description: 'No active user found for this device.',
+              variant: 'destructive',
+            });
+          }
+        });
+    });
+  }, []);
+
+  const handleLogout = () => {
+    if (user) {
+      api.database.userLogout(user.id);
+      api.window.open(WindowIdentifier.Main);
+      window.close();
+      toast({
+        title: 'Logged Out',
+        description: 'You have been successfully logged out.',
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      // Add null check for user
+      const fetchSubjects = () => {
+        setIsLoading(true);
+        try {
+          const fetchedSubjects = user?.subjects;
+          if (fetchedSubjects && fetchedSubjects.length > 0) {
+            setSubjects(fetchedSubjects);
+            setSelectedSubject(fetchedSubjects[0]);
+          } else {
+            setSubjects([]);
+            setSelectedSubject(null);
+          }
+        } catch (error) {
+          console.error('Error fetching subjects:', error);
+          toast({
+            title: 'Error',
+            description: 'Failed to fetch subjects. Please try again.',
+            variant: 'destructive',
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      fetchSubjects();
+    }
+  }, [user, toast]); // Corrected dependency array
+
+  useEffect(() => {
+    const fetchPublishedQuizzes = async () => {
       try {
-        const fetchedSubjects = user.subjects;
-        if (fetchedSubjects && fetchedSubjects.length > 0) {
-          setSubjects(fetchedSubjects);
-          setSelectedSubject(fetchedSubjects[0]);
-        } else {
-          setSubjects([]);
-          setSelectedSubject(null);
+        if (selectedSubject) {
+          const quizzes = await api.database.getQuizSubjectId(
+            selectedSubject.id,
+          );
+          for (const quiz of quizzes) {
+            console.log(quiz.title);
+          }
+          setQuizzes(quizzes);
         }
       } catch (error) {
-        console.error('Error fetching subjects:', error);
+        console.error('Error fetching quizzes:', error);
         toast({
           title: 'Error',
-          description: 'Failed to fetch subjects. Please try again.',
+          description: 'Failed to fetch quizzes. Please try again.',
           variant: 'destructive',
         });
-      } finally {
-        setIsLoading(false);
       }
     };
-    fetchSubjects();
-  }, [user.subjects, toast]); // Corrected dependency array
+
+    fetchPublishedQuizzes();
+  }, [toast, selectedSubject]);
 
   useEffect(() => {
     if (newSubjectName) {
@@ -351,14 +419,6 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     }
   };
 
-  const handleRefresh = () => {
-    window.location.reload();
-    toast({
-      title: 'Refreshed',
-      description: 'Page content has been updated.',
-    });
-  };
-
   const handleScreenUpdate = useCallback(
     (userId: string, stream: MediaStream) => {
       const videoElement = document.createElement('video');
@@ -401,12 +461,65 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     }
   }, [selectedStudent, studentScreens]);
 
+  // useEffect(() => {
+  //   const showStudentScreens = async () => {
+  //     if (showScreens) {
+  //       const sourceId = await api.screen.getScreenSourceId();
+  //       const stream = await (navigator.mediaDevices as any).getUserMedia({
+  //         audio: false,
+  //         video: {
+  //           mandatory: {
+  //             chromeMediaSource: 'desktop',
+  //             chromeMediaSourceId: sourceId,
+  //           },
+  //         },
+  //       });
+
+  //       screenShareStream.current = stream;
+
+  //       activeUsers.forEach((user) => {
+
+  //         if (!callConnections.current[user.userId]) {
+  //           const call = peer.call(user.userId, stream);
+  //           callConnections.current[user.userId] = call;
+  //           callConnections.current[user.userId]
+  //             .on('stream', (remoteStream: MediaStream) => {
+  //               handleScreenUpdate(call.peer, remoteStream);
+  //             })
+  //             .on('close', () => {
+  //               // Handle call close
+  //               setStudentScreens((prev) => ({
+  //                 ...prev,
+  //                 [call.peer]: {
+  //                   ...prev[call.peer],
+  //                   error: 'Screen share connection closed',
+  //                 },
+  //               }));
+  //             })
+  //             .on('error', (error) => {
+  //               // Handle call error
+  //               console.error('Call error:', error);
+  //               setStudentScreens((prev) => ({
+  //                 ...prev,
+  //                 [call.peer]: {
+  //                   ...prev[call.peer],
+  //                   error: 'Screen share connection error',
+  //                 },
+  //               }));
+  //             });
+  //         }
+  //       });
+  //     }
+  //   };
+  //   showStudentScreens();
+  // }, [showScreens]);
+
   useEffect(() => {
-    const showStudentScreens = async () => {
-      try {
-        if (showScreens) {
-          const sourceId = await api.screen.getScreenSourceId();
-          const stream = await (navigator.mediaDevices as any).getUserMedia({
+    if (peer) {
+      api.screen
+        .getScreenSourceId()
+        .then((sourceId) => {
+          (navigator.mediaDevices as any).getUserMedia({
             audio: false,
             video: {
               mandatory: {
@@ -414,53 +527,26 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                 chromeMediaSourceId: sourceId,
               },
             },
+          }).then((stream: MediaStream) => {
+            peer.on('call', (call) => {
+              call.answer(stream);
+              call.on('stream', (remoteStream) => {
+                handleScreenUpdate(call.peer, remoteStream);
+              });
+            });
           });
+        })
+    }
+  }, [peer, selectedSubject]);
 
-          screenShareStream.current = stream;
-
-          activeUsers.forEach((user) => {
-            if (!callConnections.current[user.userId]) {
-              const call = peer.call(user.userId, stream);
-              callConnections.current[user.userId] = call;
-              callConnections.current[user.userId]
-                .on('stream', (remoteStream: MediaStream) => {
-                  handleScreenUpdate(call.peer, remoteStream);
-                })
-                .on('close', () => {
-                  // Handle call close
-                  setStudentScreens((prev) => ({
-                    ...prev,
-                    [call.peer]: {
-                      ...prev[call.peer],
-                      error: 'Screen share connection closed',
-                    },
-                  }));
-                })
-                .on('error', (error) => {
-                  // Handle call error
-                  console.error('Call error:', error);
-                  setStudentScreens((prev) => ({
-                    ...prev,
-                    [call.peer]: {
-                      ...prev[call.peer],
-                      error: 'Screen share connection error',
-                    },
-                  }));
-                });
-            }
+  useEffect(() => {
+    const showStudentScreens = async () => {
+      if (showScreens) {
+        activeUsers.forEach((user) => {
+          socket.emit('show-screen', {
+            deviceId: user.deviceId,
+            userId: selectedSubject.userId,
           });
-
-          toast({
-            title: 'Screen Sharing Started',
-            description: 'You are now sharing your screen with students.',
-          });
-        }
-      } catch (error) {
-        console.error('Error starting screen share:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to start screen sharing. Please try again.',
-          variant: 'destructive',
         });
       }
     };
@@ -468,13 +554,10 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
   }, [showScreens]);
 
   const handleStartScreenShare = async () => {
-    for (const user of activeUsers) {
-      const conn = peer.connect(user.userId);
-      conn.on('open', () => {
-        conn.send({ type: 'teacherScreen', start: true });
-        conn.close();
-      });
-    }
+    setIsScreenSharing(true);
+    // for (const user of activeUsers) {
+    //   //TODO: Implement screen sharing
+    // }
   };
 
   const handleStopScreenShare = () => {
@@ -696,6 +779,10 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
     }
   }, [socket, selectedSubject, fetchActiveUsers, handleScreenUpdate, toast]);
 
+  const handleLiveQuiz = () => {
+    //TODO: Implement live quiz
+  };
+
   return (
     <SidebarProvider>
       <div className="min-h-screen w-screen bg-[#EAEAEB] flex">
@@ -746,7 +833,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton
-                      onClick={() => handleCreateAssignment('quiz')}
+                      onClick={handleLiveQuiz}
                       className="w-full"
                     >
                       <PenBox className="h-4 w-4 mr-2" />
@@ -831,23 +918,6 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                 </div>
 
                 <div className="flex items-center space-x-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleMinimizeWindow}
-                    className="text-white hover:bg-[#EBC42E]/20"
-                  >
-                    <Minimize2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleRefresh}
-                    className="text-white hover:bg-[#EBC42E]/20"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
-
                   <Dialog
                     open={isProfileDialogOpen}
                     onOpenChange={setIsProfileDialogOpen}
@@ -859,12 +929,12 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                       >
                         <Avatar className="h-8 w-8">
                           <AvatarFallback>
-                            {user.firstName[0]}
-                            {user.lastName[0]}
+                            {user?.firstName[0]}
+                            {user?.lastName[0]}
                           </AvatarFallback>
                         </Avatar>
                         <span className="hidden md:inline text-white">
-                          {user.firstName} {user.lastName}
+                          {user?.firstName} {user?.lastName}
                         </span>
                       </Button>
                     </DialogTrigger>
@@ -878,8 +948,8 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                         <div className="flex items-center justify-center mb-6">
                           <Avatar className="h-24 w-24">
                             <AvatarFallback className="text-2xl">
-                              {user.firstName[0]}
-                              {user.lastName[0]}
+                              {user?.firstName[0]}
+                              {user?.lastName[0]}
                             </AvatarFallback>
                           </Avatar>
                         </div>
@@ -894,7 +964,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                                   Full Name:
                                 </span>
                                 <span className="text-sm font-medium">
-                                  {user.firstName} {user.lastName}
+                                  {user?.firstName} {user?.lastName}
                                 </span>
                               </div>
                               <div className="flex justify-between">
@@ -902,7 +972,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                                   Teacher ID:
                                 </span>
                                 <span className="text-sm font-medium">
-                                  {user.schoolId}
+                                  {user?.schoolId}
                                 </span>
                               </div>
                               <div className="flex justify-between">
@@ -910,7 +980,7 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                                   Department:
                                 </span>
                                 <span className="text-sm font-medium">
-                                  {user.course}
+                                  {user?.course}
                                 </span>
                               </div>
                             </div>
@@ -926,9 +996,11 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                                   Last Login:
                                 </span>
                                 <span className="text-sm font-medium">
-                                  {recentLogin
+                                  {user?.ActiveUserLogs.length > 0
                                     ? formatDistance(
-                                        new Date(recentLogin.createdAt),
+                                        new Date(
+                                          user?.ActiveUserLogs[1].createdAt,
+                                        ),
                                         new Date(),
                                         { addSuffix: true },
                                       )
@@ -954,17 +1026,25 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                         >
                           Close
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleLogout}
+                          className="text-red-600 hover:bg-red-100"
+                        >
+                          <LogOut className="h-4 w-4 mr-2" />
+                          Logout
+                        </Button>
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
-
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={handleLogout}
+                    onClick={handleMinimizeWindow}
                     className="text-white hover:bg-[#EBC42E]/20"
                   >
-                    <LogOut className="h-4 w-4" />
+                    <Minimize2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -997,6 +1077,11 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                       >
                         <MonitorPlay className="h-4 w-4 mr-2" />
                         {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
+                        {!isScreenSharing && (
+                          <Badge variant="outline" className="ml-2">
+                            Start Now
+                          </Badge>
+                        )}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={handleShareFile}>
                         <FileUp className="h-4 w-4 mr-2" />
@@ -1044,12 +1129,14 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
                       <DropdownMenuItem
-                        onClick={() => handleCreateAssignment('quiz')}
+                        onClick={() => setIsBeginQuizDialogOpen(true)}
                       >
                         <PenBox className="h-4 w-4 mr-2" />
                         Begin a Quiz
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleCreateAssignment('quiz')}
+                      >
                         <Eye className="h-4 w-4 mr-2" />
                         Manage Quiz
                       </DropdownMenuItem>
@@ -1265,88 +1352,97 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
             )}
             {/* Student List - Adjusted height */}
             <div className="bg-white rounded-lg shadow p-4 border-l-4 border-[#EBC42E] flex-1">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center space-x-2">
-                  <Users className="h-4 w-4 text-gray-700" />
-                  <h2 className="text-lg font-semibold text-gray-900">
-                    Student List
-                  </h2>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Badge variant="outline" className="text-xs">
-                    {subjectRecords.length} Students
-                  </Badge>
+              <Tabs defaultValue="active" className="w-full">
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-700">Show Screens</span>
-                    <Switch
-                      checked={showScreens}
-                      onCheckedChange={setShowScreens}
-                    />
+                    <Users className="h-4 w-4 text-gray-700" />
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      Student List
+                    </h2>
+                    <TabsList className="grid grid-cols-2 rounded-full">
+                      <TabsTrigger className="rounded-full" value="active">
+                        Active ({activeUsers.length})
+                      </TabsTrigger>
+                      <TabsTrigger className="rounded-full" value="inactive">
+                        Inactive ({subjectRecords.length - activeUsers.length})
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Badge variant="outline" className="text-xs">
+                      {subjectRecords.length} Students
+                    </Badge>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-gray-700">
+                        Show Screens
+                      </span>
+                      <Switch
+                        checked={showScreens}
+                        onCheckedChange={setShowScreens}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              <Tabs defaultValue="active" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="active">
-                    Active ({activeUsers.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="inactive">
-                    Inactive ({subjectRecords.length - activeUsers.length})
-                  </TabsTrigger>
-                </TabsList>
 
                 <TabsContent value="active">
                   <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
-                    <div
-                      className={
-                        showScreens ? 'grid grid-cols-2 gap-4' : 'space-y-2'
-                      }
-                    >
-                      {subjectRecords
-                        .filter((record) =>
-                          activeUsers.some(
-                            (user) => user.userId === record.userId,
-                          ),
-                        )
-                        .map((record) => {
-                          const student = studentInfo[record.userId];
-                          return student ? (
-                            showScreens ? (
-                              renderStudentScreen(record.userId, student)
-                            ) : (
-                              <div
-                                key={record.id}
-                                className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
-                              >
-                                <div className="flex items-center space-x-2">
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarFallback className="text-xs">
-                                      {student?.firstName?.[0] || ''}
-                                      {student?.lastName?.[0] || ''}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <div>
-                                    <p className="text-sm font-medium">
-                                      {student?.firstName || 'Loading...'}{' '}
-                                      {student?.lastName || ''}
-                                    </p>
-                                    <p className="text-xs text-gray-500">
-                                      ID: {student?.schoolId || 'Loading...'}
-                                    </p>
-                                  </div>
-                                </div>
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs text-gray-500"
+                    {activeUsers.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                        <Users className="h-12 w-12 mb-2" />
+                        <p>No active users</p>
+                      </div>
+                    ) : (
+                      <div
+                        className={
+                          showScreens ? 'grid grid-cols-2 gap-4' : 'space-y-2'
+                        }
+                      >
+                        {subjectRecords
+                          .filter((record) =>
+                            activeUsers.some(
+                              (user) => user.userId === record.userId,
+                            ),
+                          )
+                          .map((record) => {
+                            const student = studentInfo[record.userId];
+                            return student ? (
+                              showScreens ? (
+                                renderStudentScreen(record.userId, student)
+                              ) : (
+                                <div
+                                  key={record.id}
+                                  className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
                                 >
-                                  Active
-                                </Badge>
-                              </div>
-                            )
-                          ) : null;
-                        })}
-                    </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Avatar className="h-6 w-6">
+                                      <AvatarFallback className="text-xs">
+                                        {student?.firstName?.[0] || ''}
+                                        {student?.lastName?.[0] || ''}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                      <p className="text-sm font-medium">
+                                        {student?.firstName || 'Loading...'}{' '}
+                                        {student?.lastName || ''}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        ID: {student?.schoolId || 'Loading...'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs text-gray-500"
+                                  >
+                                    Active
+                                  </Badge>
+                                </div>
+                              )
+                            ) : null;
+                          })}
+                      </div>
+                    )}
                   </ScrollArea>
                 </TabsContent>
 
@@ -1482,6 +1578,65 @@ export const TeacherConsole: React.FC<TeacherConsoleProps> = ({
                   <Button
                     variant="outline"
                     onClick={() => setIsWebpageDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Dialog
+              open={isBeginQuizDialogOpen}
+              onOpenChange={setIsBeginQuizDialogOpen}
+            >
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Begin a Quiz</DialogTitle>
+                  <DialogDescription>
+                    Choose a published quiz to begin or start a live quiz.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="quiz" className="text-right">
+                      Quiz
+                    </Label>
+                    <select
+                      id="quiz"
+                      value={selectedQuiz || ''}
+                      onChange={(e) => setSelectedQuiz(e.target.value)}
+                      className="col-span-3 bg-gray-100"
+                    >
+                      <option value="" disabled>
+                        {quizzes && quizzes.length > 0
+                          ? 'Select a quiz'
+                          : 'No quizzes available'}
+                      </option>
+                      {quizzes?.map((quiz) => (
+                        <option key={quiz.id} value={quiz.id}>
+                          {quiz.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    onClick={handleStartLiveQuiz}
+                    disabled={!selectedQuiz}
+                  >
+                    Start Live
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      navigate(`/quiz/library/${selectedSubject?.id}`)
+                    }
+                  >
+                    Manage Quiz
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsBeginQuizDialogOpen(false)}
                   >
                     Cancel
                   </Button>

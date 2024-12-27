@@ -85,7 +85,7 @@ const QuizManager: React.FC = () => {
   };
 
   const handleBack = () => {
-    navigate("/");
+    navigate(-1)
   };
 
   const totalPoints = quiz?.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
@@ -434,6 +434,24 @@ const QuizManager: React.FC = () => {
     </DragDropContext>
   );
 
+  const handleBulkUpdate = async (field: 'time' | 'points', value: number) => {
+    if (!quiz) return;
+
+    const updatedQuestions = quiz.questions.map((q) => ({
+      ...q,
+      [field]: value,
+    }));
+
+    try {
+      const updatedQuiz = await api.database.updateQuizQuestionsBulk(quizId, updatedQuestions);
+      setQuiz(updatedQuiz);
+      message.success(`Successfully updated ${field} for all questions`);
+    } catch (error) {
+      console.error(`Error updating ${field} for questions:`, error);
+      message.error(`Failed to update ${field} for questions. Please try again.`);
+    }
+  };
+
   return (
     <>
       <Layout style={{ minHeight: '100vh' }}>
@@ -469,10 +487,30 @@ const QuizManager: React.FC = () => {
               <Card title="Bulk update questions" style={{ margin: 16 }}>
                 <Collapse bordered={false}>
                   <Panel header="Time" key="time">
-                    {/* Time options */}
+                    <Select
+                      style={{ width: '100%' }}
+                      placeholder="Set time for all questions"
+                      onChange={(value) => handleBulkUpdate('time', Number(value))}
+                    >
+                      <Select.Option value="30">30 seconds</Select.Option>
+                      <Select.Option value="60">1 minute</Select.Option>
+                      <Select.Option value="120">2 minutes</Select.Option>
+                      <Select.Option value="180">3 minutes</Select.Option>
+                      <Select.Option value="240">4 minutes</Select.Option>
+                      <Select.Option value="300">5 minutes</Select.Option>
+                      <Select.Option value="600">10 minutes</Select.Option>
+                    </Select>
                   </Panel>
                   <Panel header="Points" key="points">
-                    {/* Points options */}
+                    <Select
+                      style={{ width: '100%' }}
+                      placeholder="Set points for all questions"
+                      onChange={(value) => handleBulkUpdate('points', Number(value))}
+                    >
+                      {[1, 2, 3].map((value) => (
+                        <Select.Option key={value} value={value.toString()}>{value} point{value > 1 ? 's' : ''}</Select.Option>
+                      ))}
+                    </Select>
                   </Panel>
                 </Collapse>
               </Card>

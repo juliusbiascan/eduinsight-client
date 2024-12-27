@@ -13,11 +13,7 @@ import {
 import { IPCRoute } from '../../shared/constants';
 import { ipcRenderer, IpcRendererEvent } from 'electron';
 import type AppInfo from 'package.json';
-import { EventEmitter } from 'events';
 
-class SocketEmitter extends EventEmitter {}
-
-const socketEmitter = new SocketEmitter();
 
 export default {
   app: {
@@ -74,9 +70,7 @@ export default {
         Array<Labaratory>
       >,
     getDevice: () =>
-      ipcRenderer.invoke(IPCRoute.DATABASE_GET_DEVICE) as Promise<
-        Array<Device>
-      >,
+      ipcRenderer.invoke(IPCRoute.DATABASE_GET_DEVICE) as Promise<Device>,
     getDeviceByMac: (macAddress: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_GET_DEVICE_BY_MAC,
@@ -91,12 +85,14 @@ export default {
         IPCRoute.DATABASE_GET_DEVICE_USER_BY_ID,
         id,
       ) as Promise<DeviceUser>,
+
     getActiveUserByDeviceId: (deviceId: string, labId: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_GET_ACTIVE_USER_BY_DEVICE_ID_AND_LAB_ID,
         deviceId,
         labId,
-      ) as Promise<Array<ActiveDeviceUser>>,
+      ) as Promise<ActiveDeviceUser & { user: DeviceUser & { subjects: Subject[]  , ActiveUserLogs: ActiveUserLogs[]} | null} |null>,
+
     getDeviceUserByActiveUserId: (userId: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_GET_DEVICE_USER_BY_ACTIVE_USER_ID,
@@ -132,8 +128,8 @@ export default {
         IPCRoute.DATABASE_GET_SUBJECT_BY_ID,
         subjectId,
       ) as Promise<Array<Subject>>,
-    userLogout: (userId: string, deviceId: string) =>
-      ipcRenderer.send(IPCRoute.DATABASE_USER_LOGOUT, userId, deviceId),
+    userLogout: (userId: string) =>
+      ipcRenderer.send(IPCRoute.DATABASE_USER_LOGOUT, userId),
     createSubject: (subject: Omit<Subject, 'id' | 'createdAt' | 'updatedAt'>) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_CREATE_SUBJECT,
@@ -149,9 +145,7 @@ export default {
         Array<
           Subject & {
             quizzes: Quiz[];
-            
             quizRecord: QuizRecord[];
-           
           }
         >
       >,
@@ -186,6 +180,10 @@ export default {
       >,
     getQuizById: (quizId: string) =>
       ipcRenderer.invoke(IPCRoute.DATABASE_GET_QUIZ_BY_ID, quizId) as Promise<
+        Array<Quiz & { questions: Array<QuizQuestion> }>
+      >,
+    getQuizSubjectId: (subjectId: string) =>
+      ipcRenderer.invoke(IPCRoute.DATABASE_GET_QUIZ_BY_SUBJECT_ID, subjectId) as Promise<
         Array<Quiz & { questions: Array<QuizQuestion> }>
       >,
     deleteQuiz: (quizId: string) =>
@@ -270,6 +268,15 @@ export default {
         quizId,
         questions,
       ) as Promise<Quiz & { questions: QuizQuestion[] }>,
+    updateQuizQuestionsBulk: (
+      quizId: string,
+      questions: Array<Partial<QuizQuestion>>,
+    ) =>
+      ipcRenderer.invoke(
+        IPCRoute.DATABASE_UPDATE_QUIZ_QUESTIONS_BULK,
+        quizId,
+        questions,
+      ) as Promise<Quiz & { questions: QuizQuestion[] }>,
     getQuizRecordsByUserAndSubject: (userId: string, subjectId: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_GET_QUIZ_RECORDS_BY_USER_AND_SUBJECT,
@@ -310,10 +317,6 @@ export default {
     has: (key: string) => ipcRenderer.invoke(IPCRoute.STORE_HAS, key),
   },
   socket: {
-    getInstance: () => {
-      ipcRenderer.send(IPCRoute.GET_SOCKET_INSTANCE);
-      return socketEmitter;
-    },
     update: (url: string) =>
       ipcRenderer.invoke(IPCRoute.UPDATE_SOCKET_URL, url),
     test: (url: string) =>
@@ -379,9 +382,3 @@ export default {
   }
 };
 
-// Set up listeners for socket events
-ipcRenderer.on('socket:connect', () => socketEmitter.emit('connect'));
-ipcRenderer.on('socket:disconnect', () => socketEmitter.emit('disconnect'));
-ipcRenderer.on('socket:event', (_, eventName, ...args) =>
-  socketEmitter.emit(eventName, ...args),
-);

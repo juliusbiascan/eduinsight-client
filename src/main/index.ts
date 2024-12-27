@@ -47,7 +47,6 @@ function setupSocketEventListeners(socket: Socket) {
     shell.openExternal(url);
   })
 
-
   socket.on("upload-file-chunk", ({ chunk, filename, subjectName, chunkIndex, totalChunks }) => {
     if (!fileChunks[filename]) {
       fileChunks[filename] = { chunks: [], totalChunks };
@@ -68,6 +67,11 @@ function setupSocketEventListeners(socket: Socket) {
       });
       delete fileChunks[filename];
     }
+  });
+
+  socket.on('show-screen', ({deviceId, userId}) => {
+    const window = WindowManager.get(WindowManager.WINDOW_CONFIGS.welcome_window.id);
+    window.webContents.send('show-screen', {deviceId, userId});
   });
 
   const handleDevice = () => {

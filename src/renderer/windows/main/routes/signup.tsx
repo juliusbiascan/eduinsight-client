@@ -40,10 +40,8 @@ const SignUpForm = () => {
         Promise.all([
             api.database.getDevice(),
             api.store.get('devicePurpose')
-        ]).then(([devices, purpose]) => {
-            if (devices.length > 0) {
-                setDevice(devices[0]);
-            }
+        ]).then(([device, purpose]) => {
+            setDevice(device);
             setDevicePurpose(purpose);
             // Automatically set role and yearLevel based on device purpose
             if (purpose === 'TEACHING') {

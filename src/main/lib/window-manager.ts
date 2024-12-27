@@ -1,6 +1,8 @@
 import { app, BrowserWindow, screen } from 'electron';
 import { WindowIdentifier } from '@/shared/constants';
-
+import ElectronShutdownHandler from '@paymoapp/electron-shutdown-handler';
+import { machineIdSync } from 'node-machine-id';
+import { Database } from '.';
 /**
  * @interface
  */
@@ -207,7 +209,7 @@ function create(
       event.preventDefault();
     } else if (input.control && input.alt && input.code === 'DELETE') {
       event.preventDefault();
-    }
+    }else  if(input.code == "F11") event.preventDefault();
   });
 
   if (id === WindowIdentifier.Welcome) {
@@ -273,34 +275,34 @@ function create(
       }
     });
   }
-  // ElectronShutdownHandler.setWindowHandle(window.getNativeWindowHandle());
-  // ElectronShutdownHandler.blockShutdown(
-  //   'Please wait for some data to be saved',
-  // );
+  ElectronShutdownHandler.setWindowHandle(window.getNativeWindowHandle());
+  ElectronShutdownHandler.blockShutdown(
+    'Logging out device please wait...',
+  );
 
-  // ElectronShutdownHandler.on('shutdown', () => {
-  //   console.log('Shutting down!');
-  //   Database.prisma.device.findFirst({ where: { devMACaddress: machineIdSync(true) } }).then((device) => {
-  //     Database.prisma.deviceUser.findFirst({ where: { id: device.id } }).then((deviceUser) => {
-  //       Database.prisma.activeDeviceUser
-  //       .deleteMany({
-  //         where: {
-  //           deviceId: device.id,
-  //           userId: deviceUser.id,
-  //         },
-  //       })
-  //       .then(() => {
-  //         Database.prisma.device
-  //           .update({ where: { id: device.id }, data: { isUsed: false } })
-  //           .then(() => {
-  //             ElectronShutdownHandler.releaseShutdown();
-  //             window.webContents.send('shutdown');
-  //             app.quit();
-  //           });
-  //       });
-  //     });
-  //   });
-  // });
+  ElectronShutdownHandler.on('shutdown', () => {
+    console.log('Shutting down!');
+    Database.prisma.device.findFirst({ where: { devMACaddress: machineIdSync(true) } }).then((device) => {
+      Database.prisma.deviceUser.findFirst({ where: { id: device.id } }).then((deviceUser) => {
+        Database.prisma.activeDeviceUser
+        .deleteMany({
+          where: {
+            deviceId: device.id,
+            userId: deviceUser.id,
+          },
+        })
+        .then(() => {
+          Database.prisma.device
+            .update({ where: { id: device.id }, data: { isUsed: false } })
+            .then(() => {
+              ElectronShutdownHandler.releaseShutdown();
+              window.webContents.send('shutdown');
+              app.quit();
+            });
+        });
+      });
+    });
+  });
 
   // de-reference the window object when its closed
   window.on('closed', () => delete windows[id]);

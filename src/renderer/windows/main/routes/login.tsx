@@ -1,5 +1,5 @@
 import '../../../styles/globals.css';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Device } from '@prisma/client';
 import { Button } from '../../../components/ui/button';
 import { WindowIdentifier } from '@/shared/constants';
@@ -12,7 +12,7 @@ import { Eye, EyeOff } from 'lucide-react'; // Add import for eye icons
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const [device, setDevice] = useState<Device | null>(null);
+  const [device, setDevice] = useState<Device>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -20,36 +20,39 @@ const LoginPage: React.FC = () => {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
-    api.database.getDevice().then((devices) => {
-      if (devices.length > 0) {
-        setDevice(devices[0]);
-      }
+    api.database.getDevice().then((device) => {
+      setDevice(device);
     });
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  
+  const handleLogin = useCallback( async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setMessage(null);
 
     try {
-      const { success, message } = await api.auth.login({ 
-        deviceId: device?.id, 
-        email, 
-        password 
-      });
-
-      setMessage({
-        type: success ? 'success' : 'error',
-        text: message
-      });
-
-      if (success) {
-        setTimeout(() => {
-          api.window.openInTray(WindowIdentifier.Dashboard);
-          api.window.close(WindowIdentifier.Main);
-        }, 1500);
+      if (device) {
+        console.log(device.name);
+        const { success, message } = await api.auth.login({ 
+          deviceId: device.id, 
+          email, 
+          password 
+        });
+  
+        setMessage({
+          type: success ? 'success' : 'error',
+          text: message
+        });
+  
+        if (success) {
+          setTimeout(() => {
+            api.window.openInTray(WindowIdentifier.Dashboard);
+            api.window.close(WindowIdentifier.Main);
+          }, 1500);
+        }
       }
+      
     } catch (err: any) {
       setMessage({
         type: 'error',
@@ -58,7 +61,7 @@ const LoginPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [device, email, password]);
 
   return (
     <motion.div

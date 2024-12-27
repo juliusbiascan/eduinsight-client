@@ -1,10 +1,5 @@
 import logo from '@/renderer/assets/passlogo-small.png';
-import {
-  DeviceUser,
-  Quiz,
-  QuizRecord,
-  Subject,
-} from '@prisma/client';
+import { Device, DeviceUser, Quiz, QuizRecord, Subject } from '@prisma/client';
 import { useToast } from '../../../hooks/use-toast';
 import {
   LogOut,
@@ -18,7 +13,7 @@ import {
   Menu,
 } from 'lucide-react';
 import { Toaster } from '../../../components/ui/toaster';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import {
@@ -30,33 +25,42 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../../../components/ui/dialog';
-import {
-  Avatar,
-  AvatarFallback,
-} from '@/renderer/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/renderer/components/ui/avatar';
 import { Badge } from '../../../components/ui/badge';
 import { usePeer } from '@/renderer/components/peer-provider';
 import { MediaConnection } from 'peerjs';
 import { Label } from '@/renderer/components/ui/label';
 import { WindowIdentifier } from '@/shared/constants';
-import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarProvider, SidebarTrigger } from '@/renderer/components/ui/sidebar';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarProvider,
+  SidebarTrigger,
+} from '@/renderer/components/ui/sidebar';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@radix-ui/react-dropdown-menu';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/renderer/components/ui/tabs';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@radix-ui/react-dropdown-menu';
 import { useSocket } from '@/renderer/components/socket-provider';
 
-interface StudentConsoleProps {
-  user: DeviceUser;
-  handleLogout: () => void;
-}
-
-export const StudentConsole: React.FC<StudentConsoleProps> = ({
-  user,
-  handleLogout: propsHandleLogout,
-}) => {
+export const StudentConsole = () => {
   const { toast } = useToast();
   const { peer } = usePeer();
-  const {socket, isConnected} = useSocket();
+  const { socket, isConnected } = useSocket();
+  const [user, setUser] = useState<DeviceUser>();
   const [subjectCode, setSubjectCode] = useState('');
   const [subjects, setSubjects] = useState<
     (Subject & {
@@ -77,24 +81,60 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
 
   const connection = useRef<MediaConnection | null>(null);
-  
+
+  useEffect(() => {
+    api.database.getDevice().then((device: Device) => {
+      api.database
+        .getActiveUserByDeviceId(device.id, device.labId)
+        .then((activeUser) => {
+          if (activeUser) {
+            setUser(activeUser.user);
+          } else {
+            toast({
+              title: 'Error',
+              description: 'No active user found for this device.',
+              variant: 'destructive',
+            });
+          }
+        });
+    });
+  }, []);
+
+  const handleLogout = () => {
+    if (user) {
+      api.database.userLogout(user.id);
+      api.window.open(WindowIdentifier.Main);
+      toast({
+        title: 'Logged Out',
+        description: 'You have been successfully logged out.',
+      });
+
+      if (selectedSubject) {
+        socket.emit('logout-user', {
+          userId: user.id,
+          subjectId: selectedSubject.id,
+        });
+      }
+    }
+  };
+
   useEffect(() => {
     if (peer) {
-      peer.on('call',async (call) => {
+      peer.on('call', async (call) => {
         console.log('Received call from peer:', call.peer);
         const sourceId = await api.screen.getScreenSourceId();
-          const stream = await (navigator.mediaDevices as any).getUserMedia({
-            audio: false,
-            video: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: sourceId,
-                maxWidth: 1280,
-                maxHeight: 720,
-                frameRate: { ideal: 15, max: 30 },
-              },
+        const stream = await (navigator.mediaDevices as any).getUserMedia({
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: sourceId,
+              maxWidth: 1280,
+              maxHeight: 720,
+              frameRate: { ideal: 15, max: 30 },
             },
-          });
+          },
+        });
         if (stream) {
           call.answer(stream); // Answer the call with the screen stream
           call.on('stream', (_remoteStream) => {
@@ -118,20 +158,23 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
   }, [peer]);
 
   useEffect(() => {
-    if (!socket || !isConnected) {
+    if (!user || !socket || !isConnected) {
       return;
     }
-    socket.emit("join-server", user.id);
+    socket.emit('join-server', user.id);
     fetchSubjects();
-  }, [user.id]);
+  }, [user, socket, isConnected]);
 
-  const fetchSubjects = async () => {
+  const fetchSubjects = useCallback( async () => {
+    if (!user) return;
     try {
       const data = await api.database.getStudentSubjects(user.id);
-      setSubjects(data);
-
       if (data.length > 0) {
+        setSubjects(data);
         setSelectedSubject(data[0]);
+      } else {
+        setSubjects([]);
+        setSelectedSubject(null);
       }
     } catch (error) {
       console.error('Error fetching subjects:', error);
@@ -141,7 +184,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
         variant: 'destructive',
       });
     }
-  };
+  }, [user]);
 
   const handleJoinSubject = async () => {
     if (!subjectCode.trim()) {
@@ -173,7 +216,10 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
           user.labId,
         );
         if (result.success) {
-          socket.emit('join-subject', { userId: user.id, subjectId: result.subjectId });
+          socket.emit('join-subject', {
+            userId: user.id,
+            subjectId: result.subjectId,
+          });
           toast({
             title: 'Success',
             description: 'Subject joined successfully',
@@ -244,7 +290,10 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
         user.id,
       );
       if (result.success) {
-        socket.emit('leave-subject', { userId: user.id, subjectId: selectedSubject.id });
+        socket.emit('leave-subject', {
+          userId: user.id,
+          subjectId: selectedSubject.id,
+        });
         toast({ title: 'Success', description: 'Subject left successfully' });
         setSelectedSubject(null);
         fetchSubjects();
@@ -279,18 +328,8 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
     });
   };
 
-
-
   const handleMinimizeWindow = () => {
     api.window.hide(WindowIdentifier.Dashboard);
-  };
-
-  const handleLogout = () => {
-    if (selectedSubject) {
-      socket.emit('logout-user', { userId: user.id, subjectId: selectedSubject.id });
-    }
-    // Call the original handleLogout function passed as a prop
-    propsHandleLogout();
   };
 
   return (
@@ -374,7 +413,6 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                   >
                     <RefreshCw className="h-4 w-4" />
                   </Button>
-                  
 
                   <Dialog
                     open={isProfileDialogOpen}
@@ -387,12 +425,12 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                       >
                         <Avatar className="h-8 w-8">
                           <AvatarFallback>
-                            {user.firstName[0]}
-                            {user.lastName[0]}
+                            {user?.firstName[0]}
+                            {user?.lastName[0]}
                           </AvatarFallback>
                         </Avatar>
                         <span className="hidden md:inline text-white">
-                          {user.firstName} {user.lastName}
+                          {user?.firstName} {user?.lastName}
                         </span>
                       </Button>
                     </DialogTrigger>
@@ -406,8 +444,8 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                         <div className="flex items-center justify-center mb-6">
                           <Avatar className="h-24 w-24">
                             <AvatarFallback className="text-2xl">
-                              {user.firstName[0]}
-                              {user.lastName[0]}
+                              {user?.firstName[0]}
+                              {user?.lastName[0]}
                             </AvatarFallback>
                           </Avatar>
                         </div>
@@ -422,7 +460,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                                   Full Name:
                                 </span>
                                 <span className="text-sm font-medium">
-                                  {user.firstName} {user.lastName}
+                                  {user?.firstName} {user?.lastName}
                                 </span>
                               </div>
                               <div className="flex justify-between">
@@ -430,7 +468,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                                   Student ID:
                                 </span>
                                 <span className="text-sm font-medium">
-                                  {user.schoolId}
+                                  {user?.schoolId}
                                 </span>
                               </div>
                               <div className="flex justify-between">
@@ -438,7 +476,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                                   Course:
                                 </span>
                                 <span className="text-sm font-medium">
-                                  {user.course}
+                                  {user?.course}
                                 </span>
                               </div>
                               <div className="flex justify-between">
@@ -446,7 +484,7 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                                   Year:
                                 </span>
                                 <span className="text-sm font-medium">
-                                  {user.yearLevel}
+                                  {user?.yearLevel}
                                 </span>
                               </div>
                             </div>
@@ -477,33 +515,36 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
             </div>
           </header>
 
-          {selectedSubject&& <div className="bg-white border-b">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between items-center h-14">
-                <div className="flex space-x-4">
-                  {/* Actions Button */}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="flex items-center space-x-2"
-                      >
-                        <Globe2 className="h-4 w-4" />
-                        <span>Settings</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem 
-                       disabled={isLeavingSubject}
-                      onClick={handleLeaveSubject}>
-                     { isLeavingSubject ? 'Leaving...' :  'Leave Subject'}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+          {selectedSubject && (
+            <div className="bg-white border-b">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="flex justify-between items-center h-14">
+                  <div className="flex space-x-4">
+                    {/* Actions Button */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className="flex items-center space-x-2"
+                        >
+                          <Globe2 className="h-4 w-4" />
+                          <span>Settings</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem
+                          disabled={isLeavingSubject}
+                          onClick={handleLeaveSubject}
+                        >
+                          {isLeavingSubject ? 'Leaving...' : 'Leave Subject'}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>}
+          )}
 
           <main className="px-4 sm:px-6 lg:px-8 py-4 relative h-[calc(100vh-8rem)] overflow-y-auto">
             {subjects.length === 0 ? (
@@ -604,26 +645,84 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
               <Tabs defaultValue="published" className="w-full">
                 <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="published">
-                    Published ({selectedSubject?.quizzes.filter(quiz => quiz.published).length})
+                    Published (
+                    {
+                      selectedSubject?.quizzes.filter((quiz) => quiz.published)
+                        .length
+                    }
+                    )
                   </TabsTrigger>
                   <TabsTrigger value="unpublished">
-                    Unpublished ({selectedSubject?.quizzes.filter(quiz => !quiz.published).length})
+                    Unpublished (
+                    {
+                      selectedSubject?.quizzes.filter((quiz) => !quiz.published)
+                        .length
+                    }
+                    )
                   </TabsTrigger>
-                
                 </TabsList>
 
                 <TabsContent value="published">
                   <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
                     <div className="space-y-2">
-                      {selectedSubject?.quizzes.filter(quiz => quiz.published).map((quiz) => {
-                        const quizRecord = selectedSubject.quizRecord.find(
-                          (record) => record.quizId === quiz.id && record.userId === user.id,
-                        );
-                        const isQuizDone = !!quizRecord;
-                        const score = quizRecord
-                          ? (quizRecord.score / quizRecord.totalQuestions) * 100
-                          : 0;
-                        return (
+                      {selectedSubject?.quizzes
+                        .filter((quiz) => quiz.published)
+                        .map((quiz) => {
+                          const quizRecord = selectedSubject.quizRecord.find(
+                            (record) =>
+                              record.quizId === quiz.id &&
+                              record.userId === user.id,
+                          );
+                          const isQuizDone = !!quizRecord;
+                          const score = quizRecord
+                            ? (quizRecord.score / quizRecord.totalQuestions) *
+                              100
+                            : 0;
+                          return (
+                            <div
+                              key={quiz.id}
+                              className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
+                            >
+                              <div className="flex items-center space-x-2">
+                                <div>
+                                  <p className="text-sm font-medium">
+                                    {quiz.title}
+                                  </p>
+                                  {isQuizDone && (
+                                    <p className="text-xs text-gray-500">
+                                      Score: {score}/{quizRecord.totalQuestions}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <Badge
+                                variant="outline"
+                                className="text-xs text-gray-500"
+                              >
+                                {isQuizDone ? 'Done' : 'Not Done'}
+                              </Badge>
+                              {!isQuizDone && (
+                                <Button
+                                  size="sm"
+                                  className="ml-2"
+                                  onClick={() => handleStartQuiz(quiz.id)}
+                                >
+                                  Start
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+
+                <TabsContent value="unpublished">
+                  <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
+                    <div className="space-y-2">
+                      {selectedSubject?.quizzes
+                        .filter((quiz) => !quiz.published)
+                        .map((quiz) => (
                           <div
                             key={quiz.id}
                             className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
@@ -633,63 +732,19 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                                 <p className="text-sm font-medium">
                                   {quiz.title}
                                 </p>
-                                {isQuizDone && (
-                                  <p className="text-xs text-gray-500">
-                                    Score: {score}/{quizRecord.totalQuestions}
-                                  </p>
-                                )}
                               </div>
                             </div>
                             <Badge
                               variant="outline"
                               className="text-xs text-gray-500"
                             >
-                              {isQuizDone ? 'Done' : 'Not Done'}
+                              Unpublished
                             </Badge>
-                            {!isQuizDone && (
-                              <Button
-                                size="sm"
-                                className="ml-2"
-                                onClick={() => handleStartQuiz(quiz.id)}
-                              >
-                                Start
-                              </Button>
-                            )}
                           </div>
-                        );
-                      })}
+                        ))}
                     </div>
                   </ScrollArea>
                 </TabsContent>
-
-                <TabsContent value="unpublished">
-                  <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
-                    <div className="space-y-2">
-                      {selectedSubject?.quizzes.filter(quiz => !quiz.published).map((quiz) => (
-                        <div
-                          key={quiz.id}
-                          className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
-                        >
-                          <div className="flex items-center space-x-2">
-                            <div>
-                              <p className="text-sm font-medium">
-                                {quiz.title}
-                              </p>
-                            </div>
-                          </div>
-                          <Badge
-                            variant="outline"
-                            className="text-xs text-gray-500"
-                          >
-                            Unpublished
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </TabsContent>
-
-            
               </Tabs>
             </div>
             <Toaster />
@@ -721,7 +776,6 @@ export const StudentConsole: React.FC<StudentConsoleProps> = ({
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            
           </main>
         </div>
       </div>

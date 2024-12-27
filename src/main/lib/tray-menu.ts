@@ -6,7 +6,6 @@ let mainWindow: BrowserWindow;
 
 
 function showWindow() {
-  mainWindow.webContents.reload();
   mainWindow.maximize();
   mainWindow.show();
   mainWindow.focus();

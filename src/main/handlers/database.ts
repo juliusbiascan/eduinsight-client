@@ -14,16 +14,16 @@ import {
 import { sleep } from '@/shared/utils';
 import { getSocketInstance } from '../lib/socket-manager';
 import { Database } from '../lib';
-import StoreManager from '@/main/lib/store';
-import fs from 'fs';
-import csv from 'csv-parser';
-import xlsx from 'xlsx';
 import { hash, compare } from 'bcryptjs';
 import { startMonitoring, stopPowerMonitoring } from '../lib/monitoring';
 import crypto from 'crypto';
 import { sendOtpCodeEmail } from '../lib/mail';
 import { createTray, removeTray } from '../lib/tray-menu';
+import xlsx from 'xlsx';
+import csv from 'csv-parser';
+import fs from 'fs';
 import path from 'path';
+import StoreManager from '@/main/lib/store';
 
 const store = StoreManager.getInstance();
 
@@ -145,11 +145,11 @@ export default function () {
 
   ipcMain.handle(IPCRoute.DATABASE_GET_NETWORK_NAMES, () => getNetworkNames());
 
-  ipcMain.handle(IPCRoute.DATABASE_GET_DEVICE, () =>
-    Database.prisma.device.findMany({
+  ipcMain.handle(IPCRoute.DATABASE_GET_DEVICE, async () => {
+    return await Database.prisma.device.findFirst({
       where: { devMACaddress: machineIdSync(true) },
-    }),
-  );
+    });
+  });
 
   ipcMain.handle(
     IPCRoute.DATABASE_GET_DEVICE_BY_MAC,
@@ -164,12 +164,22 @@ export default function () {
   ipcMain.handle(
     IPCRoute.DATABASE_GET_ACTIVE_USER_BY_DEVICE_ID_AND_LAB_ID,
     (_e, deviceId: string, labId: string) =>
-      Database.prisma.activeDeviceUser.findMany({ where: { deviceId, labId } }),
+      Database.prisma.activeDeviceUser.findFirst({
+        where: { deviceId, labId },
+        include: {
+          user: {
+            include: {
+              subjects: true,
+              ActiveUserLogs: true,
+             },
+          },
+        },
+      }),
   );
 
-  ipcMain.handle(IPCRoute.DATABASE_GET_DEVICE_USER_BY_ID, (_e, id: string) =>
-    Database.prisma.deviceUser.findFirst({ where: { id } }),
-  );
+  ipcMain.handle(IPCRoute.DATABASE_GET_DEVICE_USER_BY_ID, (_e, id: string) => {
+    return Database.prisma.deviceUser.findFirst({ where: { id } });
+  });
 
   ipcMain.handle(
     IPCRoute.DATABASE_GET_DEVICE_USER_BY_ACTIVE_USER_ID,
@@ -316,7 +326,11 @@ export default function () {
             labId: labId,
           },
         });
-        return { success: true, message: 'Subject joined successfully', subjectId: result.subjectId };
+        return {
+          success: true,
+          message: 'Subject joined successfully',
+          subjectId: result.subjectId,
+        };
       } catch (error) {
         console.error('Error joining subject:', error);
         return { success: false, message: 'Failed to join subject' };
@@ -364,6 +378,18 @@ export default function () {
       });
     },
   );
+
+  ipcMain.handle(
+    IPCRoute.DATABASE_GET_QUIZ_BY_SUBJECT_ID,
+    async (_e, subjectId: string) => {
+      return await Database.prisma.quiz.findMany({
+        where: { subjectId , published: true},
+        include: { questions: true },
+      });
+    },
+  );
+
+
 
   ipcMain.on(IPCRoute.DATABASE_DELETE_QUIZ, async (_e, quizId: string) => {
     await Database.prisma.quiz.delete({
@@ -629,6 +655,32 @@ export default function () {
   );
 
   ipcMain.handle(
+    IPCRoute.DATABASE_UPDATE_QUIZ_QUESTIONS_BULK,
+    async (_e, quizId: string, updatedQuestions: Array<Partial<QuizQuestion>>) => {
+      try {
+        const result = await Database.prisma.$transaction(async (prisma) => {
+          for (const question of updatedQuestions) {
+            await prisma.quizQuestion.update({
+              where: { id: question.id },
+              data: question,
+            });
+          }
+
+          return await prisma.quiz.findFirst({
+            where: { id: quizId },
+            include: { questions: true },
+          });
+        });
+
+        return result;
+      } catch (error) {
+        console.error('Error updating questions in bulk:', error);
+        throw error;
+      }
+    },
+  );
+
+  ipcMain.handle(
     IPCRoute.DATABASE_GET_QUIZ_RECORDS_BY_USER_AND_SUBJECT,
     async (_e, userId: string, subjectId: string) => {
       try {
@@ -658,7 +710,6 @@ export default function () {
       }
     },
   );
-
 
   ipcMain.handle(IPCRoute.AUTH_REGISTER, async (_, data) => {
     try {
@@ -761,32 +812,37 @@ export default function () {
     }
   });
 
-  ipcMain.on(
-    IPCRoute.DATABASE_USER_LOGOUT,
-    async (_e, userId: string, deviceId: string) => {
-      await Database.prisma.activeDeviceUser.deleteMany({
-        where: {
-          deviceId,
-          userId,
-        },
-      });
+  ipcMain.on(IPCRoute.DATABASE_USER_LOGOUT, async (_e, userId: string) => {
+    const activeUser = await Database.prisma.activeDeviceUser.findFirst({
+      where: { userId },
+    });
 
-      await Database.prisma.device.update({
-        where: { id: deviceId },
-        data: { isUsed: false },
-      });
+    if (!activeUser) {
+      return;
+    }
 
-      stopPowerMonitoring();
-      removeTray();
-      // Get the socket instance
-      const socket = getSocketInstance();
+    await Database.prisma.activeDeviceUser.deleteMany({
+      where: {
+        deviceId: activeUser.deviceId,
+        userId: activeUser.userId,
+      },
+    });
 
-      // Emit the logout event to the server
-      if (socket && socket.connected) {
-        socket.emit('logout-user', deviceId);
-      }
-    },
-  );
+    await Database.prisma.device.update({
+      where: { id: activeUser.deviceId },
+      data: { isUsed: false },
+    });
+
+    stopPowerMonitoring();
+    removeTray();
+    // Get the socket instance
+    const socket = getSocketInstance();
+
+    // Emit the logout event to the server
+    if (socket && socket.connected) {
+      socket.emit('logout-user', activeUser.deviceId);
+    }
+  });
 
   ipcMain.handle(IPCRoute.SEND_OTP, async (_, email: string) => {
     try {

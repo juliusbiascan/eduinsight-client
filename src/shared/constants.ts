@@ -28,6 +28,8 @@ export enum WindowIdentifier {
  * @enum
  */
 export enum IPCRoute {
+
+  DATABASE_UPDATE_QUIZ_QUESTIONS_BULK = 'database:update-quiz-questions-bulk',
   OPEN_EXTERNAL_LINK = '/open_external_link',
   WINDOW_OPEN_SETUP = '/window/open-setup',
   WINDOW_CREATE_TRAY = '/window/create-tray',
@@ -74,6 +76,7 @@ export enum IPCRoute {
   DATABASE_CREATE_SUBJECT = '/database/create_subject',
   DATABASE_GET_QUIZZES_BY_USER_ID = '/database/get_quizzes_by_user_id',
   DATABASE_GET_QUIZ_BY_ID = '/database/get_quiz_by_id',
+  DATABASE_GET_QUIZ_BY_SUBJECT_ID = '/database/get_quiz_by_subject_id',
   DATABASE_DELETE_QUIZ = '/database/delete_quiz',
   DATABASE_CREATE_QUIZ = '/database/create_quiz',
   DATABASE_UPDATE_QUIZ = '/database/update_quiz',

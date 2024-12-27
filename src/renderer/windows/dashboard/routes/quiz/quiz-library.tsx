@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusOutlined, MoreOutlined, PlayCircleOutlined, EditOutlined, DeleteOutlined, CloseOutlined, LoadingOutlined, SearchOutlined, BookOutlined, FileOutlined, QuestionCircleOutlined, TagOutlined, UserOutlined } from '@ant-design/icons';
+import { PlusOutlined, MoreOutlined, PlayCircleOutlined, EditOutlined, DeleteOutlined, LoadingOutlined, SearchOutlined, BookOutlined, FileOutlined, QuestionCircleOutlined, TagOutlined, UserOutlined, LeftOutlined } from '@ant-design/icons';
 import { Button, Card, Dropdown, Menu, Typography, Space, Row, Col, Modal, Spin, Layout, Input, Tooltip, Select, Form } from 'antd';
 import { DeviceUser, Quiz, QuizQuestion, Subject } from '@prisma/client';
 import { useToast } from '@/renderer/hooks/use-toast';
@@ -28,11 +28,11 @@ const QuizLibrary: React.FC = () => {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const devices = await api.database.getDevice();
-        if (devices && devices.length > 0) {
-          const activeUsers = await api.database.getActiveUserByDeviceId(devices[0].id, devices[0].labId);
-          if (activeUsers && activeUsers.length > 0) {
-            const users = await api.database.getDeviceUserByActiveUserId(activeUsers[0].userId);
+        const device = await api.database.getDevice();
+        if (device) {
+          const activeUsers = await api.database.getActiveUserByDeviceId(device.id, device.labId);
+          if (activeUsers ) {
+            const users = await api.database.getDeviceUserByActiveUserId(activeUsers.userId);
             if (users && users.length > 0) {
               setUser(users[0]);
               const fetchedQuizzes = await api.database.getQuizzesByUserId(users[0].id);
@@ -249,8 +249,8 @@ const QuizLibrary: React.FC = () => {
     }
   };
 
-  const handleCloseWindow = () => {
-    window.close();
+  const handleBack = () => {
+    navigate(-1)
   };
 
   if (loading) {
@@ -281,6 +281,9 @@ const QuizLibrary: React.FC = () => {
       <Layout>
         <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Space>
+              <Button icon={<LeftOutlined />} onClick={handleBack} />
+          </Space>
+          <Space>
             <Input
               placeholder="Search quizzes"
               prefix={<SearchOutlined />}
@@ -303,7 +306,6 @@ const QuizLibrary: React.FC = () => {
             <Button type="primary" icon={<PlusOutlined />} onClick={showCreateQuizModal}>
               Create Quiz
             </Button>
-            <Button icon={<CloseOutlined />} onClick={handleCloseWindow} />
           </Space>
         </Header>
         <Content style={{ margin: '24px', background: '#fff', padding: 24, minHeight: 280 }}>
