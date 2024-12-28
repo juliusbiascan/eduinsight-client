@@ -32,6 +32,7 @@ const QuizPlayer: React.FC = () => {
   const [identificationAnswer, setIdentificationAnswer] = useState('');
   const [enumerationAnswers, setEnumerationAnswers] = useState<string[]>([]);
   const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
+  const [countdown, setCountdown] = useState(5); // Add countdown state
 
   const fetchQuiz = async (quizId: string) => {
     try {
@@ -67,6 +68,13 @@ const QuizPlayer: React.FC = () => {
         });
     });
   }, []);
+
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
 
   const completeQuiz = useCallback(() => {
     setQuizCompleted(true);
@@ -403,6 +411,14 @@ const QuizPlayer: React.FC = () => {
 
     return () => clearInterval(timer);
   }, [quiz, currentQuestionIndex, quizCompleted, completeQuiz]);
+
+  if (countdown > 0) {
+    return (
+      <div className="flex items-center justify-center h-screen text-5xl bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 text-white">
+        Starting in {countdown}...
+      </div>
+    );
+  }
 
   if (!quiz) {
     return (

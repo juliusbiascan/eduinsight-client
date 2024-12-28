@@ -40,12 +40,7 @@ import {
   SidebarTrigger,
 } from '@/renderer/components/ui/sidebar';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/renderer/components/ui/tabs';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -76,7 +71,6 @@ export const StudentConsole = () => {
   const [isLeavingSubject, setIsLeavingSubject] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
-
 
   useEffect(() => {
     api.database.getDevice().then((device: Device) => {
@@ -114,8 +108,6 @@ export const StudentConsole = () => {
     }
   };
 
- 
-
   useEffect(() => {
     if (!user || !socket || !isConnected) {
       return;
@@ -124,7 +116,7 @@ export const StudentConsole = () => {
     fetchSubjects();
   }, [user, socket, isConnected]);
 
-  const fetchSubjects = useCallback( async () => {
+  const fetchSubjects = useCallback(async () => {
     if (!user) return;
     try {
       const data = await api.database.getStudentSubjects(user.id);
@@ -609,110 +601,57 @@ export const StudentConsole = () => {
                 </div>
               </div>
 
-              <Tabs defaultValue="published" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="published">
-                    Published (
-                    {
-                      selectedSubject?.quizzes.filter((quiz) => quiz.published)
-                        .length
-                    }
-                    )
-                  </TabsTrigger>
-                  <TabsTrigger value="unpublished">
-                    Unpublished (
-                    {
-                      selectedSubject?.quizzes.filter((quiz) => !quiz.published)
-                        .length
-                    }
-                    )
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="published">
-                  <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
-                    <div className="space-y-2">
-                      {selectedSubject?.quizzes
-                        .filter((quiz) => quiz.published)
-                        .map((quiz) => {
-                          const quizRecord = selectedSubject.quizRecord.find(
-                            (record) =>
-                              record.quizId === quiz.id &&
-                              record.userId === user.id,
-                          );
-                          const isQuizDone = !!quizRecord;
-                          const score = quizRecord
-                            ? (quizRecord.score / quizRecord.totalQuestions) *
-                              100
-                            : 0;
-                          return (
-                            <div
-                              key={quiz.id}
-                              className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
-                            >
-                              <div className="flex items-center space-x-2">
-                                <div>
-                                  <p className="text-sm font-medium">
-                                    {quiz.title}
-                                  </p>
-                                  {isQuizDone && (
-                                    <p className="text-xs text-gray-500">
-                                      Score: {score}/{quizRecord.totalQuestions}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <Badge
-                                variant="outline"
-                                className="text-xs text-gray-500"
-                              >
-                                {isQuizDone ? 'Done' : 'Not Done'}
-                              </Badge>
-                              {!isQuizDone && (
-                                <Button
-                                  size="sm"
-                                  className="ml-2"
-                                  onClick={() => handleStartQuiz(quiz.id)}
-                                >
-                                  Start
-                                </Button>
+              <ScrollArea className="h-[calc(100vh-24rem)] w-full rounded-md border p-2">
+                <div className="space-y-2">
+                  {selectedSubject?.quizzes
+                    .filter((quiz) => quiz.published)
+                    .map((quiz) => {
+                      const quizRecord = selectedSubject.quizRecord.find(
+                        (record) =>
+                          record.quizId === quiz.id &&
+                          record.userId === user.id,
+                      );
+                      const isQuizDone = !!quizRecord;
+                      const score = quizRecord
+                        ? (quizRecord.score / quizRecord.totalQuestions) * 100
+                        : 0;
+                      return (
+                        <div
+                          key={quiz.id}
+                          className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <div>
+                              <p className="text-sm font-medium">
+                                {quiz.title}
+                              </p>
+                              {isQuizDone && (
+                                <p className="text-xs text-gray-500">
+                                  Score: {score}/{quizRecord.totalQuestions}
+                                </p>
                               )}
                             </div>
-                          );
-                        })}
-                    </div>
-                  </ScrollArea>
-                </TabsContent>
-
-                <TabsContent value="unpublished">
-                  <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
-                    <div className="space-y-2">
-                      {selectedSubject?.quizzes
-                        .filter((quiz) => !quiz.published)
-                        .map((quiz) => (
-                          <div
-                            key={quiz.id}
-                            className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
-                          >
-                            <div className="flex items-center space-x-2">
-                              <div>
-                                <p className="text-sm font-medium">
-                                  {quiz.title}
-                                </p>
-                              </div>
-                            </div>
-                            <Badge
-                              variant="outline"
-                              className="text-xs text-gray-500"
-                            >
-                              Unpublished
-                            </Badge>
                           </div>
-                        ))}
-                    </div>
-                  </ScrollArea>
-                </TabsContent>
-              </Tabs>
+                          <Badge
+                            variant="outline"
+                            className="text-xs text-gray-500"
+                          >
+                            {isQuizDone ? 'Done' : 'Not Done'}
+                          </Badge>
+                          {!isQuizDone && (
+                            <Button
+                              size="sm"
+                              className="ml-2"
+                              onClick={() => handleStartQuiz(quiz.id)}
+                            >
+                              Start
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              </ScrollArea>
             </div>
             <Toaster />
             <Dialog open={isJoinDialogOpen} onOpenChange={setIsJoinDialogOpen}>

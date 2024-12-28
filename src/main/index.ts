@@ -3,7 +3,7 @@
  * @description Main entry point for the EduInsight Client application.
  */
 
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, desktopCapturer, ipcMain, shell } from 'electron';
 import { Database, WindowManager } from './lib';
 import * as IPCHandlers from './handlers';
 import {
@@ -11,7 +11,7 @@ import {
   disconnectSocket,
   testHttpConnection,
 } from './lib/socket-manager';
-import { IPCRoute } from '@/shared/constants';
+import { IPCRoute, WindowIdentifier } from '@/shared/constants';
 import StoreManager from '@/main/lib/store';
 import Store from 'electron-store';
 import { Socket } from 'socket.io-client';
@@ -19,7 +19,7 @@ import { sleep } from '@/shared/utils';
 import { startMonitoring } from './lib/monitoring';
 import { createTray } from './lib/tray-menu';
 import fs, { writeFile } from 'fs';
-
+import sharp from 'sharp';
 import path from 'path';
 
 const store = StoreManager.getInstance();
@@ -36,10 +36,17 @@ function setupSocketEventListeners(socket: Socket) {
     labId: store.get('labId'),
     userId: store.get('userId'),
   });
-
+  let captureInterval: NodeJS.Timeout | null = null;
   const fileChunks: Record<string, { chunks: string[]; totalChunks: number }> =
     {};
 
+  socket.on('start-live-quiz', ({ quizId }) => {
+    const quiz = WindowManager.get(WindowIdentifier.QuizPlayer);
+    quiz.on('ready-to-show', () => {
+      quiz.webContents.send(IPCRoute.QUIZ_GET_QUIZ_ID, quizId);
+    });
+  });
+  
   socket.on('launch-webpage', ({ url }) => {
     shell.openExternal(url);
   });
@@ -73,11 +80,38 @@ function setupSocketEventListeners(socket: Socket) {
   );
 
   socket.on('show-screen', ({ _deviceId, userId, subjectId }) => {
-    socket.emit('screen-data', {
-      userId,
-      subjectId,
-      screenData: 'TODO Implement Base64 Screen Data',
-    });
+    if (captureInterval) clearInterval(captureInterval);
+
+    captureInterval = setInterval(() => {
+      desktopCapturer
+        .getSources({
+          types: ['screen'],
+          thumbnailSize: { width: 1920, height: 1080 },
+        })
+        .then(async (sources) => {
+          const compressedImageBuffer = await sharp(
+            sources[0].thumbnail.toPNG(),
+          )
+            .resize(1280, 720)
+            .jpeg({ quality: 50 })
+            .toBuffer();
+          const compressedImageDataUrl = `data:image/jpeg;base64,${compressedImageBuffer.toString('base64')}`;
+          socket.emit('screen-data', {
+            userId,
+            subjectId,
+            screenData: compressedImageDataUrl,
+          });
+        })
+        .catch((error) => console.error('Error capturing screen:', error));
+    }, 100);
+  });
+
+  socket.on('stop-screen', () => {
+    console.log('Stop sharing event received');
+    if (captureInterval) {
+      clearInterval(captureInterval);
+      captureInterval = null;
+    }
   });
 
   const handleDevice = () => {

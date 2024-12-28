@@ -145,10 +145,15 @@ export const TeacherConsole = () => {
     useState<Array<Quiz & { questions: Array<QuizQuestion> }>>();
 
   const handleStartLiveQuiz = () => {
-    // Placeholder for starting a live quiz
+    for (const user of activeUsers) {
+      socket.emit('start-live-quiz', {
+        deviceId: user.deviceId,
+        quizId: selectedQuiz,
+      });
+    }
     toast({
       title: 'Live Quiz',
-      description: 'Live quiz functionality will be available soon.',
+      description: 'The quiz has been started on student devices.',
       variant: 'default',
     });
   };
@@ -523,9 +528,15 @@ export const TeacherConsole = () => {
           {/* Screen Preview */}
           <div className="relative w-full aspect-video bg-gray-200 rounded-lg overflow-hidden group">
             <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-gray-400">
-                {screenState.screenData}
-              </p>
+              {screenState?.screenData ? (
+                <img
+                  src={screenState.screenData}
+                  alt="Student Screen"
+                  className="object-cover w-full h-full"
+                />
+              ) : (
+                <p className="text-sm text-gray-400">No screen data available</p>
+              )}
             </div>
           </div>
         </div>
