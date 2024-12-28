@@ -12,7 +12,6 @@ import {
   Subject,
 } from '@prisma/client';
 import { sleep } from '@/shared/utils';
-import { getSocketInstance } from '../lib/socket-manager';
 import { Database } from '../lib';
 import { hash, compare } from 'bcryptjs';
 import { startMonitoring, stopPowerMonitoring } from '../lib/monitoring';
@@ -835,13 +834,6 @@ export default function () {
 
     stopPowerMonitoring();
     removeTray();
-    // Get the socket instance
-    const socket = getSocketInstance();
-
-    // Emit the logout event to the server
-    if (socket && socket.connected) {
-      socket.emit('logout-user', activeUser.deviceId);
-    }
   });
 
   ipcMain.handle(IPCRoute.SEND_OTP, async (_, email: string) => {

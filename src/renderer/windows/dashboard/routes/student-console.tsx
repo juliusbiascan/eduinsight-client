@@ -13,7 +13,7 @@ import {
   Menu,
 } from 'lucide-react';
 import { Toaster } from '../../../components/ui/toaster';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import {
@@ -27,8 +27,6 @@ import {
 } from '../../../components/ui/dialog';
 import { Avatar, AvatarFallback } from '@/renderer/components/ui/avatar';
 import { Badge } from '../../../components/ui/badge';
-import { usePeer } from '@/renderer/components/peer-provider';
-import { MediaConnection } from 'peerjs';
 import { Label } from '@/renderer/components/ui/label';
 import { WindowIdentifier } from '@/shared/constants';
 import {
@@ -58,7 +56,6 @@ import { useSocket } from '@/renderer/components/socket-provider';
 
 export const StudentConsole = () => {
   const { toast } = useToast();
-  const { peer } = usePeer();
   const { socket, isConnected } = useSocket();
   const [user, setUser] = useState<DeviceUser>();
   const [subjectCode, setSubjectCode] = useState('');
@@ -80,7 +77,6 @@ export const StudentConsole = () => {
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
 
-  const connection = useRef<MediaConnection | null>(null);
 
   useEffect(() => {
     api.database.getDevice().then((device: Device) => {
@@ -118,44 +114,7 @@ export const StudentConsole = () => {
     }
   };
 
-  useEffect(() => {
-    if (peer) {
-      peer.on('call', async (call) => {
-        console.log('Received call from peer:', call.peer);
-        const sourceId = await api.screen.getScreenSourceId();
-        const stream = await (navigator.mediaDevices as any).getUserMedia({
-          audio: false,
-          video: {
-            mandatory: {
-              chromeMediaSource: 'desktop',
-              chromeMediaSourceId: sourceId,
-              maxWidth: 1280,
-              maxHeight: 720,
-              frameRate: { ideal: 15, max: 30 },
-            },
-          },
-        });
-        if (stream) {
-          call.answer(stream); // Answer the call with the screen stream
-          call.on('stream', (_remoteStream) => {
-            console.log('Received stream from teacher');
-          });
-
-          call.on('close', () => {
-            console.log('Call closed');
-          });
-
-          connection.current = call;
-        } else {
-          console.log('No screen stream available to answer the call');
-        }
-      });
-
-      peer.on('error', (error) => {
-        console.error('PeerJS error:', error);
-      });
-    }
-  }, [peer]);
+ 
 
   useEffect(() => {
     if (!user || !socket || !isConnected) {
@@ -172,6 +131,10 @@ export const StudentConsole = () => {
       if (data.length > 0) {
         setSubjects(data);
         setSelectedSubject(data[0]);
+        socket.emit('join-subject', {
+          userId: user.id,
+          subjectId: data[0].id,
+        });
       } else {
         setSubjects([]);
         setSelectedSubject(null);
@@ -250,6 +213,10 @@ export const StudentConsole = () => {
   const handleSubjectChange = (value: string) => {
     const subject = subjects.find((s) => s.id.toString() === value);
     setSelectedSubject(subject || null);
+    socket.emit('join-subject', {
+      userId: user.id,
+      subjectId: subject.id,
+    });
   };
 
   const calculateProgress = () => {

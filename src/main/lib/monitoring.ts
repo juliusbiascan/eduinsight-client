@@ -2,7 +2,7 @@ import { activeWindow } from 'get-windows';
 import { powerMonitor } from "electron";
 import { Database } from '.';
 import { ActivityManager } from './activity';
-import { getSocketInstance, isSocketConnected } from './socket-manager';
+import { getSocketInstance } from './socket-manager';
 
 /**
  * Gets the current timestamp in the format "YYYY-MM-DD HH:MM:SS".
@@ -60,9 +60,7 @@ export async function startMonitoring(userId: string, deviceId: string, labId: s
           if (activitySaved) {
             lastTitle = result.title;
             lastUpdateTime = currentTime;
-            if (isSocketConnected()) {
-              socket.emit("activity-update", deviceId);
-            }
+            socket.emit("activity-update", deviceId);
           }
         }
       }
@@ -95,7 +93,7 @@ async function pushPowerLogsToDB(pm_status: string, pm_log_ts: string, userId: s
     });
     
     const socket = getSocketInstance();
-    if (socket && isSocketConnected()) {
+    if (socket) {
       socket.emit("power-monitoring-update", { deviceId });
     }
   } catch (error) {

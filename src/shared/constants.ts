@@ -36,7 +36,6 @@ export enum IPCRoute {
   WINDOW_CREATE_TRAY = '/window/create-tray',
   WINDOW_REMOVE_TRAY = '/window/remove-tray',
 
-  GET_SOCKET_INSTANCE = '/get_socket_instance',
   CONNECTION_STATUS_UPDATE = '/connection/status-update',
   DATABASE_INITIALIZE = '/database/initialize',
   DATABASE_GET_DEVICE_USER_BY_ID = '/database/get_device_user_by_id',

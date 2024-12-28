@@ -112,7 +112,6 @@
     "lucide-react": "^0.446.0",
     "node-machine-id": "^1.1.12",
     "nodemailer": "^6.9.16",
-    "peerjs": "^1.5.4",
     "postcss-loader": "^8.1.1",
     "prettier": "^3.3.3",
     "prisma": "^5.20.0",

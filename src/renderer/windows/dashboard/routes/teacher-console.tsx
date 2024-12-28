@@ -50,7 +50,7 @@ import {
   Settings2Icon,
   Trash2Icon,
   Minimize2,
-  Maximize2,
+  PlayIcon,
 } from 'lucide-react';
 import { Badge } from '@/renderer/components/ui/badge';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
@@ -88,9 +88,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/renderer/components/ui/tabs';
-import { Skeleton } from '@/renderer/components/ui/skeleton';
-//import { MediaConnection } from 'peerjs';
-import { usePeer } from '@/renderer/components/peer-provider';
+
 import { Switch } from '@/renderer/components/ui/switch';
 import { useSocket } from '@/renderer/components/socket-provider';
 import { formatDistance } from 'date-fns';
@@ -102,16 +100,10 @@ interface StudentInfo {
   schoolId: string;
 }
 
-interface ScreenUpdate {
-  timestamp: number;
-  data: HTMLVideoElement;
-}
 
 interface StudentScreenState {
   [userId: string]: {
-    loading: boolean;
-    error: string | null;
-    lastUpdate: ScreenUpdate | null;
+    screenData: string;
   };
 }
 
@@ -140,15 +132,8 @@ export const TeacherConsole = () => {
   const [studentInfo, setStudentInfo] = useState<Record<string, StudentInfo>>(
     {},
   );
-  const [selectedStudent, setSelectedStudent] = useState<StudentInfo | null>(
-    null,
-  );
-  const [studentScreens, setStudentScreens] = useState<StudentScreenState>({});
-  const { peer } = usePeer();
-  const [isStudentScreenMaximized, setIsStudentScreenMaximized] =
-    useState(false);
+  const [studentScreenState, setStudentScreenState] = useState<StudentScreenState>({});
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  //const callConnections = useRef<Record<string, MediaConnection>>({});
   const [showScreens, setShowScreens] = useState<boolean>(false);
   const [isWebpageDialogOpen, setIsWebpageDialogOpen] = useState(false);
   const [webpageUrl, setWebpageUrl] = useState('');
@@ -166,14 +151,6 @@ export const TeacherConsole = () => {
       description: 'Live quiz functionality will be available soon.',
       variant: 'default',
     });
-  };
-
-  const handleMaximizeStudentScreen = () => {
-    setIsStudentScreenMaximized(true);
-  };
-
-  const handleMinimizeStudentScreen = () => {
-    setIsStudentScreenMaximized(false);
   };
 
   const handleMinimizeWindow = () => {
@@ -263,9 +240,7 @@ export const TeacherConsole = () => {
           const quizzes = await api.database.getQuizSubjectId(
             selectedSubject.id,
           );
-          for (const quiz of quizzes) {
-            console.log(quiz.title);
-          }
+
           setQuizzes(quizzes);
         }
       } catch (error) {
@@ -419,145 +394,26 @@ export const TeacherConsole = () => {
     }
   };
 
-  const handleScreenUpdate = useCallback(
-    (userId: string, stream: MediaStream) => {
-      const videoElement = document.createElement('video');
-      videoElement.srcObject = stream;
-      videoElement.onloadedmetadata = () => {
-        videoElement.play().catch((error) => {
-          console.error('Error playing video:', error);
-        });
-      };
-
-      setStudentScreens((prev) => ({
-        ...prev,
-        [userId]: {
-          loading: false,
-          error: null,
-          lastUpdate: {
-            timestamp: Date.now(),
-            data: videoElement,
-          },
-        },
-      }));
-    },
-    [],
-  );
-
-  // Add this new useEffect to handle screen data for selected student
-  useEffect(() => {
-    if (selectedStudent) {
-      const screenState = studentScreens[selectedStudent.id];
-      if (screenState?.lastUpdate && selectedStudent) {
-        setSelectedStudent((prev) =>
-          prev
-            ? {
-                ...prev,
-                screenData: screenState.lastUpdate.data,
-              }
-            : selectedStudent,
-        );
-      }
-    }
-  }, [selectedStudent, studentScreens]);
-
-  // useEffect(() => {
-  //   const showStudentScreens = async () => {
-  //     if (showScreens) {
-  //       const sourceId = await api.screen.getScreenSourceId();
-  //       const stream = await (navigator.mediaDevices as any).getUserMedia({
-  //         audio: false,
-  //         video: {
-  //           mandatory: {
-  //             chromeMediaSource: 'desktop',
-  //             chromeMediaSourceId: sourceId,
-  //           },
-  //         },
-  //       });
-
-  //       screenShareStream.current = stream;
-
-  //       activeUsers.forEach((user) => {
-
-  //         if (!callConnections.current[user.userId]) {
-  //           const call = peer.call(user.userId, stream);
-  //           callConnections.current[user.userId] = call;
-  //           callConnections.current[user.userId]
-  //             .on('stream', (remoteStream: MediaStream) => {
-  //               handleScreenUpdate(call.peer, remoteStream);
-  //             })
-  //             .on('close', () => {
-  //               // Handle call close
-  //               setStudentScreens((prev) => ({
-  //                 ...prev,
-  //                 [call.peer]: {
-  //                   ...prev[call.peer],
-  //                   error: 'Screen share connection closed',
-  //                 },
-  //               }));
-  //             })
-  //             .on('error', (error) => {
-  //               // Handle call error
-  //               console.error('Call error:', error);
-  //               setStudentScreens((prev) => ({
-  //                 ...prev,
-  //                 [call.peer]: {
-  //                   ...prev[call.peer],
-  //                   error: 'Screen share connection error',
-  //                 },
-  //               }));
-  //             });
-  //         }
-  //       });
-  //     }
-  //   };
-  //   showStudentScreens();
-  // }, [showScreens]);
-
-  useEffect(() => {
-    if (peer) {
-      api.screen
-        .getScreenSourceId()
-        .then((sourceId) => {
-          (navigator.mediaDevices as any).getUserMedia({
-            audio: false,
-            video: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: sourceId,
-              },
-            },
-          }).then((stream: MediaStream) => {
-            peer.on('call', (call) => {
-              call.answer(stream);
-              call.on('stream', (remoteStream) => {
-                handleScreenUpdate(call.peer, remoteStream);
-              });
-            });
-          });
-        })
-    }
-  }, [peer, selectedSubject]);
-
-  useEffect(() => {
-    const showStudentScreens = async () => {
-      if (showScreens) {
-        activeUsers.forEach((user) => {
-          socket.emit('show-screen', {
-            deviceId: user.deviceId,
-            userId: selectedSubject.userId,
-          });
-        });
-      }
-    };
-    showStudentScreens();
-  }, [showScreens]);
 
   const handleStartScreenShare = async () => {
     setIsScreenSharing(true);
-    // for (const user of activeUsers) {
-    //   //TODO: Implement screen sharing
-    // }
+    const sourceId = await api.screen.getScreenSourceId();
+    const stream = await (navigator.mediaDevices as any).getUserMedia({
+      audio: false,
+      video: {
+        mandatory: {
+          chromeMediaSource: 'desktop',
+          chromeMediaSourceId: sourceId,
+        },
+      },
+    });
+
+    for (const user of activeUsers) {
+      socket.emit('start-screen-share', {
+        deviceId: user.deviceId,
+        stream,
+      });
+    }
   };
 
   const handleStopScreenShare = () => {
@@ -632,17 +488,13 @@ export const TeacherConsole = () => {
   // Update the renderStudentScreen function to include click handling
   const renderStudentScreen = useCallback(
     (userId: string, student: StudentInfo) => {
-      const screenState = studentScreens[userId];
+
+      const screenState = studentScreenState[userId];
 
       return (
         <div
           key={userId}
-          className={`flex flex-col p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer ${
-            isStudentScreenMaximized ? 'fixed inset-0 z-50 bg-white' : ''
-          }`}
-          onClick={() => {
-            setSelectedStudent(student);
-          }}
+          className={`flex flex-col p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer`}
         >
           {/* Student Header */}
           <div className="flex items-center justify-between mb-2">
@@ -662,84 +514,29 @@ export const TeacherConsole = () => {
             </div>
             <div className="flex items-center space-x-2">
               <Badge variant="default" className="text-xs">
-                {screenState?.loading ? 'Connecting' : 'Active'}
+                Active
               </Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  isStudentScreenMaximized
-                    ? handleMinimizeStudentScreen()
-                    : handleMaximizeStudentScreen();
-                }}
-              >
-                {isStudentScreenMaximized ? (
-                  <Minimize2 className="h-4 w-4" />
-                ) : (
-                  <Maximize2 className="h-4 w-4" />
-                )}
-              </Button>
+              
             </div>
           </div>
 
           {/* Screen Preview */}
           <div className="relative w-full aspect-video bg-gray-200 rounded-lg overflow-hidden group">
-            {screenState?.loading ? (
-              <Skeleton className="w-full h-full" />
-            ) : screenState?.error ? (
-              <div className="flex items-center justify-center h-full">
-                <p className="text-sm text-red-500">{screenState.error}</p>
-              </div>
-            ) : screenState?.lastUpdate ? (
-              <>
-                <video
-                  ref={(el) => {
-                    if (el) {
-                      el.srcObject = screenState.lastUpdate.data.srcObject;
-                      el.onloadedmetadata = () => {
-                        el.play().catch((error) => {
-                          console.error('Error playing video:', error);
-                        });
-                      };
-                    }
-                  }}
-                  className="w-full h-full object-contain"
-                />
-              </>
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <p className="text-sm text-gray-400">
-                  Waiting for screen share...
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Last Update Timestamp */}
-          {screenState?.lastUpdate && (
-            <div className="flex items-center justify-between mt-2">
-              <p className="text-xs text-gray-500">
-                Last updated:{' '}
-                {new Date(
-                  screenState.lastUpdate.timestamp,
-                ).toLocaleTimeString()}
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-gray-400">
+                {screenState.screenData}
               </p>
-              <Badge variant="outline" className="text-xs">
-                Click to view details
-              </Badge>
             </div>
-          )}
+          </div>
         </div>
       );
     },
-    [studentScreens, isStudentScreenMaximized],
+    [studentScreenState],
   );
 
   useEffect(() => {
     if (socket && isConnected && selectedSubject) {
       socket.emit('join-server', selectedSubject.id);
-      console.log('Joining server:', selectedSubject.name);
 
       socket.on('student-joined', ({ _userId, subjectId }) => {
         if (selectedSubject.id === subjectId) {
@@ -771,13 +568,45 @@ export const TeacherConsole = () => {
         }
       });
 
+      socket.on('screen-data', ({ userId, screenData }) => {
+        //TODO: Implement screen data handling
+        handleScreenUpdate(userId, screenData);
+      
+      });
+
       return () => {
         socket.off('student-joined');
         socket.off('student-left');
         socket.off('student-logged-out');
+        socket.off('screen-data');
       };
     }
   }, [socket, selectedSubject, fetchActiveUsers]);
+
+  useEffect(() => {
+    if (showScreens) {
+      activeUsers.forEach((user) => {
+        socket.emit('show-screen', {
+          deviceId: user.deviceId,
+          userId: user.userId,
+          subjectId: selectedSubject.id,
+        });
+      });
+    }
+  }, [showScreens]);
+
+  const handleScreenUpdate = useCallback(
+    (userId: string, screenData: string) => {
+      setStudentScreenState((prev) => ({
+        ...prev,
+        [userId]: {
+          screenData,
+        },
+      }));
+    },
+    [],
+  );
+
 
   const handleLiveQuiz = () => {
     //TODO: Implement live quiz
@@ -836,7 +665,7 @@ export const TeacherConsole = () => {
                       onClick={handleLiveQuiz}
                       className="w-full"
                     >
-                      <PenBox className="h-4 w-4 mr-2" />
+                      <PlayIcon className="h-4 w-4 mr-2" />
                       <span>Begin Quiz</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -1131,13 +960,13 @@ export const TeacherConsole = () => {
                       <DropdownMenuItem
                         onClick={() => setIsBeginQuizDialogOpen(true)}
                       >
-                        <PenBox className="h-4 w-4 mr-2" />
+                        <PlayIcon className="h-4 w-4 mr-2" />
                         Begin a Quiz
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => handleCreateAssignment('quiz')}
                       >
-                        <Eye className="h-4 w-4 mr-2" />
+                        <PenBox className="h-4 w-4 mr-2" />
                         Manage Quiz
                       </DropdownMenuItem>
                       <DropdownMenuItem

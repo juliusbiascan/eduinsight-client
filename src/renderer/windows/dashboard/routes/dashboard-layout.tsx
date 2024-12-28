@@ -1,10 +1,8 @@
-import { PeerProvider } from '@/renderer/components/peer-provider';
-import { Device, DeviceUser, DeviceUserRole } from '@prisma/client';
-import { useEffect, useState } from 'react';
+import { Device, DeviceUserRole } from '@prisma/client';
+import { useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 
 const DashboardLayout = () => {
-  const [user, setUser] = useState<DeviceUser>()
   
   const navigate = useNavigate();
   
@@ -20,16 +18,13 @@ const DashboardLayout = () => {
           } else {
             navigate('/guest');
           }
-          setUser(activeUser.user);
         });
     });
   }, []);
 
 
   return (
-    <PeerProvider userId={user?.id}>
-      <Outlet />
-    </PeerProvider>
+    <Outlet />
   );
 };
 

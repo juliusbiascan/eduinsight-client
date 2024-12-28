@@ -8,10 +8,7 @@ import { Database, WindowManager } from './lib';
 import * as IPCHandlers from './handlers';
 import {
   createSocketConnection,
-  isSocketConnected,
-  getConnectionStatus,
   disconnectSocket,
-  removeAllListeners,
   testHttpConnection,
 } from './lib/socket-manager';
 import { IPCRoute } from '@/shared/constants';
@@ -21,7 +18,7 @@ import { Socket } from 'socket.io-client';
 import { sleep } from '@/shared/utils';
 import { startMonitoring } from './lib/monitoring';
 import { createTray } from './lib/tray-menu';
-import fs,{ writeFile } from "fs";
+import fs, { writeFile } from 'fs';
 
 import path from 'path';
 
@@ -32,7 +29,6 @@ const connectionUrl = store.get('socketUrl') as string;
 const databaseUrl = store.get('databaseUrl') as string;
 
 function setupSocketEventListeners(socket: Socket) {
-
   console.log('Setting up socket event listeners', {
     connectionUrl,
     databaseUrl,
@@ -41,37 +37,47 @@ function setupSocketEventListeners(socket: Socket) {
     userId: store.get('userId'),
   });
 
-  const fileChunks: Record<string, { chunks: string[], totalChunks: number }> = {};
+  const fileChunks: Record<string, { chunks: string[]; totalChunks: number }> =
+    {};
 
-  socket.on('launch-webpage', ({url}) => {
+  socket.on('launch-webpage', ({ url }) => {
     shell.openExternal(url);
-  })
-
-  socket.on("upload-file-chunk", ({ chunk, filename, subjectName, chunkIndex, totalChunks }) => {
-    if (!fileChunks[filename]) {
-      fileChunks[filename] = { chunks: [], totalChunks };
-    }
-    fileChunks[filename].chunks[chunkIndex] = chunk;
-
-    if (fileChunks[filename].chunks.filter(Boolean).length === totalChunks) {
-      const fileContent = fileChunks[filename].chunks.join('');
-      const buffer = Buffer.from(fileContent, 'base64');
-      const subjectFolderPath = path.join(app.getPath('downloads'), subjectName);
-      if (!fs.existsSync(subjectFolderPath)) {
-        fs.mkdirSync(subjectFolderPath);
-      }
-      writeFile(path.join(subjectFolderPath, filename), buffer, (err) => {
-        if (err) {
-          console.error("Failed to save file:", err);
-        }
-      });
-      delete fileChunks[filename];
-    }
   });
 
-  socket.on('show-screen', ({deviceId, userId}) => {
-    const window = WindowManager.get(WindowManager.WINDOW_CONFIGS.screen_window.id);
-    window.webContents.send('show-screen', {deviceId, userId});
+  socket.on(
+    'upload-file-chunk',
+    ({ chunk, filename, subjectName, chunkIndex, totalChunks }) => {
+      if (!fileChunks[filename]) {
+        fileChunks[filename] = { chunks: [], totalChunks };
+      }
+      fileChunks[filename].chunks[chunkIndex] = chunk;
+
+      if (fileChunks[filename].chunks.filter(Boolean).length === totalChunks) {
+        const fileContent = fileChunks[filename].chunks.join('');
+        const buffer = Buffer.from(fileContent, 'base64');
+        const subjectFolderPath = path.join(
+          app.getPath('downloads'),
+          subjectName,
+        );
+        if (!fs.existsSync(subjectFolderPath)) {
+          fs.mkdirSync(subjectFolderPath);
+        }
+        writeFile(path.join(subjectFolderPath, filename), buffer, (err) => {
+          if (err) {
+            console.error('Failed to save file:', err);
+          }
+        });
+        delete fileChunks[filename];
+      }
+    },
+  );
+
+  socket.on('show-screen', ({ _deviceId, userId, subjectId }) => {
+    socket.emit('screen-data', {
+      userId,
+      subjectId,
+      screenData: 'TODO Implement Base64 Screen Data',
+    });
   });
 
   const handleDevice = () => {
@@ -151,7 +157,6 @@ function setupSocketEventListeners(socket: Socket) {
 function handleOnReady() {
   Object.values(IPCHandlers).forEach((handler) => handler());
   Store.initRenderer();
-  console.log('App User Data:', app.getPath('userData'));
 
   if (connectionUrl) {
     testHttpConnection(connectionUrl)
@@ -161,7 +166,7 @@ function handleOnReady() {
           : Promise.reject('Server is not reachable'),
       )
       .then((socket) => {
-        if (isSocketConnected()) setupSocketEventListeners(socket);
+        setupSocketEventListeners(socket);
       })
       .catch((error) => {
         console.error('Failed to create socket connection:', error);
@@ -173,11 +178,11 @@ function handleOnReady() {
 
   ipcMain.handle(IPCRoute.UPDATE_SOCKET_URL, async (_event, newUrl: string) => {
     await disconnectSocket();
-    removeAllListeners();
+
     try {
       const socket = await createSocketConnection(newUrl);
       setupSocketEventListeners(socket);
-      return getConnectionStatus();
+      return 'connected';
     } catch (error) {
       console.error('Failed to update socket URL:', error);
       return 'failed';
@@ -205,10 +210,14 @@ function handleOnReady() {
       callback(true);
     },
   );
+  // Ignore Chromium selfsigned warning errors
+  app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
+
   app.on('ready', handleOnReady);
   app.on('window-all-closed', () => {
     if (!store.get('deviceId')) app.quit();
   });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       WindowManager.get(WindowManager.WINDOW_CONFIGS.main_window.id);
