@@ -106,7 +106,7 @@ function setupSocketEventListeners(socket: Socket) {
     }, 100);
   });
 
-  socket.on('stop-screen', () => {
+  socket.on('hide-screen', () => {
     console.log('Stop sharing event received');
     if (captureInterval) {
       clearInterval(captureInterval);
