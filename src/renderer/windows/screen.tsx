@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom/client';
 import { useEffect, useState } from 'react';
 import { Device, DeviceUser } from '@prisma/client';
 import { Sparkles, Waves } from 'lucide-react';
-import { PeerProvider, usePeer } from '../components/peer-provider';
 
 /**
  *Welcome Page
@@ -23,42 +22,6 @@ const ScreenLayout = () => {
   }, []);
 
   return (
-    <PeerProvider userId={user.id}>
-      <Screen user={user} />
-    </PeerProvider>
-  );
-};
-
-export default ScreenLayout;
-function Screen({ user }: { user: DeviceUser }) {
-  const { peer } = usePeer();
-
-  useEffect(() => {
-    if (peer) {
-      api.window.receive(
-        'show-screen',
-        (event, { _deviceId, userId }) => {
-          api.screen.getScreenSourceId().then((sourceId) => {
-            (navigator.mediaDevices as any)
-              .getUserMedia({
-                audio: false,
-                video: {
-                  mandatory: {
-                    chromeMediaSource: 'desktop',
-                    chromeMediaSourceId: sourceId,
-                  },
-                },
-              })
-              .then((stream: MediaStream) => {
-                peer.call(userId, stream);
-              });
-          });
-        },
-      );
-    }
-  }, [user, peer]);
-
-  return (
     <div className="bg-gradient-to-r from-[#C9121F] to-[#EBC42E] rounded-lg shadow-lg p-8 w-[600px] h-[200px] flex items-center justify-start overflow-hidden">
       <div className="text-white flex-grow">
         <h1 className="text-4xl font-bold mb-3 flex items-center">
@@ -72,7 +35,8 @@ function Screen({ user }: { user: DeviceUser }) {
       </div>
     </div>
   );
-}
+};
+
 
 /**
  * React bootstrapping logic.
