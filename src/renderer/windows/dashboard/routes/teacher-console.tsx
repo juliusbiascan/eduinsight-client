@@ -603,6 +603,12 @@ export const TeacherConsole = () => {
           subjectId: selectedSubject.id,
         });
       });
+    }else{
+      activeUsers.forEach((user) => {
+        socket.emit('hide-screen', {
+          deviceId: user.deviceId,
+        });
+      });
     }
   }, [showScreens]);
 
