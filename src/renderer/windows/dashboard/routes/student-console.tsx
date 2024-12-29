@@ -63,9 +63,9 @@ export const StudentConsole = () => {
   const [isJoining, setIsJoining] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<
     | (Subject & {
-        quizzes: Quiz[];
-        quizRecord: QuizRecord[];
-      })
+      quizzes: Quiz[];
+      quizRecord: QuizRecord[];
+    })
     | null
   >(null);
   const [isLeavingSubject, setIsLeavingSubject] = useState(false);
@@ -590,62 +590,72 @@ export const StudentConsole = () => {
                 </div>
               </div>
             )}
-            {/* Quizzes List - Adjusted height */}
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-[#EBC42E] flex-1">
-              <div className="flex items-center justify-between mb-2">
+            {/* Quizzes List */}
+            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-[#EBC42E]">
+              <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-2">
-                  <Clock className="h-4 w-4 text-gray-700" />
-                  <h2 className="text-lg font-semibold text-gray-900">
-                    Quizzes
-                  </h2>
+                  <Clock className="h-5 w-5 text-[#C9121F]" />
+                  <h2 className="text-xl font-semibold">Available Quizzes</h2>
                 </div>
               </div>
 
-              <ScrollArea className="h-[calc(100vh-24rem)] w-full rounded-md border p-2">
-                <div className="space-y-2">
+              <ScrollArea className="h-[calc(100vh-24rem)] w-full rounded-md">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
                   {selectedSubject?.quizzes
                     .filter((quiz) => quiz.published)
                     .map((quiz) => {
                       const quizRecord = selectedSubject.quizRecord.find(
                         (record) =>
-                          record.quizId === quiz.id &&
-                          record.userId === user.id,
+                          record.quizId === quiz.id && record.userId === user.id
                       );
                       const isQuizDone = !!quizRecord;
 
                       return (
                         <div
                           key={quiz.id}
-                          className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
+                          className="group relative bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow"
                         >
-                          <div className="flex items-center space-x-2">
-                            <div>
-                              <p className="text-sm font-medium">
-                                {quiz.title}
-                              </p>
+                          <div
+                            className="h-32 rounded-t-lg flex items-center justify-center"
+                            style={{
+                              backgroundColor: quiz.color || `hsl(${Math.random() * 360}, 70%, 90%)`,
+                            }}
+                          >
+                            <h3 className="text-lg font-semibold text-gray-800 px-4 text-center">
+                              {quiz.title}
+                            </h3>
+                          </div>
+                          <div className="p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <Badge variant={isQuizDone ? "secondary" : "outline"}>
+                                {isQuizDone ? "Completed" : "Not Started"}
+                              </Badge>
                               {isQuizDone && (
-                                <p className="text-xs text-gray-500">
-                                  Score: {quizRecord.score}/
-                                  {quizRecord.totalPoints}
-                                </p>
+                                <Badge variant="success" className="bg-green-100 text-green-800">
+                                  Score: {quizRecord.score}/{quizRecord.totalPoints}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="space-y-2">
+                              {!isQuizDone && quiz.visibility === 'public' && (
+                                <Button
+                                  className="w-full"
+                                  onClick={() => handleStartQuiz(quiz.id)}
+                                >
+                                  Start Quiz
+                                </Button>
+                              )}
+                              {isQuizDone && (
+                                <Button
+                                  variant="outline"
+                                  className="w-full"
+                                  onClick={() => handleStartQuiz(quiz.id)}
+                                >
+                                  Review Quiz
+                                </Button>
                               )}
                             </div>
                           </div>
-                          <Badge
-                            variant="outline"
-                            className="text-xs text-gray-500"
-                          >
-                            {isQuizDone ? 'Done' : 'Not Done'}
-                          </Badge>
-                          {!isQuizDone && quiz.visibility == 'public' && (
-                            <Button
-                              size="sm"
-                              className="ml-2"
-                              onClick={() => handleStartQuiz(quiz.id)}
-                            >
-                              Start
-                            </Button>
-                          )}
                         </div>
                       );
                     })}
