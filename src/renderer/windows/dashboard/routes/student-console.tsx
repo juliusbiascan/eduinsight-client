@@ -612,9 +612,7 @@ export const StudentConsole = () => {
                           record.userId === user.id,
                       );
                       const isQuizDone = !!quizRecord;
-                      const score = quizRecord
-                        ? (quizRecord.score / quizRecord.totalQuestions) * 100
-                        : 0;
+
                       return (
                         <div
                           key={quiz.id}
@@ -627,7 +625,8 @@ export const StudentConsole = () => {
                               </p>
                               {isQuizDone && (
                                 <p className="text-xs text-gray-500">
-                                  Score: {score}/{quizRecord.totalQuestions}
+                                  Score: {quizRecord.score}/
+                                  {quizRecord.totalPoints}
                                 </p>
                               )}
                             </div>
@@ -638,7 +637,7 @@ export const StudentConsole = () => {
                           >
                             {isQuizDone ? 'Done' : 'Not Done'}
                           </Badge>
-                          {!isQuizDone && (
+                          {!isQuizDone && quiz.visibility == 'public' && (
                             <Button
                               size="sm"
                               className="ml-2"

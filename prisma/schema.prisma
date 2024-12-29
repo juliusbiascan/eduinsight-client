@@ -280,6 +280,7 @@ model QuizRecord {
   userId         String
   score          Int
   totalQuestions Int
+  totalPoints    Int
   completedAt    DateTime
   createdAt      DateTime @default(now())
   updatedAt      DateTime @default(now())

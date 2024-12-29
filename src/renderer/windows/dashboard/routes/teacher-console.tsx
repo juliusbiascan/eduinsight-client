@@ -842,15 +842,15 @@ export const TeacherConsole = () => {
                                   Last Login:
                                 </span>
                                 <span className="text-sm font-medium">
-                                  {user?.ActiveUserLogs.length > 0
+                                  {user?.ActiveUserLogs.length > 1
                                     ? formatDistance(
                                         new Date(
-                                          user?.ActiveUserLogs[1].createdAt,
+                                          user?.ActiveUserLogs[1]?.createdAt,
                                         ),
                                         new Date(),
                                         { addSuffix: true },
                                       )
-                                    : 'No recent login'}
+                                    : 'No last login'}
                                 </span>
                               </div>
                               <div className="flex justify-between">

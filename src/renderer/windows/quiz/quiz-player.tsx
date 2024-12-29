@@ -89,6 +89,7 @@ const QuizPlayer: React.FC = () => {
         userId: user.id,
         quizId: quiz.id,
         score,
+        totalPoints,
         totalQuestions: quiz.questions.length,
         completedAt: new Date(),
       });
