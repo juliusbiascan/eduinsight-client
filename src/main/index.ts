@@ -19,8 +19,8 @@ import { sleep } from '@/shared/utils';
 import { startMonitoring } from './lib/monitoring';
 import { createTray } from './lib/tray-menu';
 import fs, { writeFile } from 'fs';
-import sharp from 'sharp';
 import path from 'path';
+//import { createCanvas, loadImage } from 'canvas';
 
 const store = StoreManager.getInstance();
 const deviceId = store.get('deviceId') as string;
@@ -46,7 +46,7 @@ function setupSocketEventListeners(socket: Socket) {
       quiz.webContents.send(IPCRoute.QUIZ_GET_QUIZ_ID, quizId);
     });
   });
-  
+
   socket.on('launch-webpage', ({ url }) => {
     shell.openExternal(url);
   });
@@ -86,20 +86,13 @@ function setupSocketEventListeners(socket: Socket) {
       desktopCapturer
         .getSources({
           types: ['screen'],
-          thumbnailSize: { width: 1920, height: 1080 },
+          thumbnailSize: { width: 1280, height: 720 },
         })
         .then(async (sources) => {
-          const compressedImageBuffer = await sharp(
-            sources[0].thumbnail.toPNG(),
-          )
-            .resize(1280, 720)
-            .jpeg({ quality: 50 })
-            .toBuffer();
-          const compressedImageDataUrl = `data:image/jpeg;base64,${compressedImageBuffer.toString('base64')}`;
           socket.emit('screen-data', {
             userId,
             subjectId,
-            screenData: compressedImageDataUrl,
+            screenData: sources[0].thumbnail.toDataURL(),
           });
         })
         .catch((error) => console.error('Error capturing screen:', error));
@@ -247,7 +240,28 @@ function handleOnReady() {
   // Ignore Chromium selfsigned warning errors
   app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
 
-  app.on('ready', handleOnReady);
+  app.on('ready', () => {
+    desktopCapturer
+      .getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 1280, height: 720 },
+      })
+      .then(async (sources) => {
+        const stream = await (navigator.mediaDevices as any).getUserMedia({
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: sources[0].id,
+            },
+          },
+        });
+
+       console.log('stream:', stream);
+      })
+      .catch((error) => console.error('Error capturing screen:', error));
+    handleOnReady();
+  });
   app.on('window-all-closed', () => {
     if (!store.get('deviceId')) app.quit();
   });

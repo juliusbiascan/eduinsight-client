@@ -14,19 +14,15 @@ import {
   SubjectRecord,
 } from '@prisma/client';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { WindowIdentifier } from '@/shared/constants';
+import { PC_CONFIG, WindowIdentifier } from '@/shared/constants';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/renderer/components/ui/dialog';
-import { Input } from '@/renderer/components/ui/input';
-import { Label } from '@/renderer/components/ui/label';
-import { Textarea } from '@/renderer/components/ui/textarea';
 import { generateSubjectCode } from '@/shared/utils';
 import { Avatar, AvatarFallback } from '@/renderer/components/ui/avatar';
 import {
@@ -92,6 +88,11 @@ import {
 import { Switch } from '@/renderer/components/ui/switch';
 import { useSocket } from '@/renderer/components/socket-provider';
 import { formatDistance } from 'date-fns';
+import { CreateSubjectModal } from '../../../components/modals/create-subject-modal';
+import { WebpageModal } from '../../../components/modals/webpage-modal';
+import { BeginQuizModal } from '../../../components/modals/begin-quiz-modal';
+import { ShareScreenModal } from '../../../components/modals/share-screen-modal';
+import { ShowScreensModal } from '../../../components/modals/show-screen-modal';
 
 interface StudentInfo {
   id: string;
@@ -99,7 +100,6 @@ interface StudentInfo {
   lastName: string;
   schoolId: string;
 }
-
 
 interface StudentScreenState {
   [userId: string]: {
@@ -117,6 +117,7 @@ export const TeacherConsole = () => {
       ActiveUserLogs: ActiveUserLogs[];
     }
   >();
+  const localStreamRef = useRef<MediaStream | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [newSubjectName, setNewSubjectName] = useState<string>('');
@@ -132,7 +133,8 @@ export const TeacherConsole = () => {
   const [studentInfo, setStudentInfo] = useState<Record<string, StudentInfo>>(
     {},
   );
-  const [studentScreenState, setStudentScreenState] = useState<StudentScreenState>({});
+  const [studentScreenState, setStudentScreenState] =
+    useState<StudentScreenState>({});
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [showScreens, setShowScreens] = useState<boolean>(false);
   const [isWebpageDialogOpen, setIsWebpageDialogOpen] = useState(false);
@@ -143,6 +145,9 @@ export const TeacherConsole = () => {
   const [selectedQuiz, setSelectedQuiz] = useState<string | null>(null);
   const [quizzes, setQuizzes] =
     useState<Array<Quiz & { questions: Array<QuizQuestion> }>>();
+  const [isShareScreenDialogOpen, setIsShareScreenDialogOpen] = useState(false);
+  const [isShowScreensDialogOpen, setIsShowScreensDialogOpen] = useState(false);
+  const pcRefs = useRef<{ [key: string]: RTCPeerConnection }>({});
 
   const handleStartLiveQuiz = () => {
     for (const user of activeUsers) {
@@ -399,32 +404,6 @@ export const TeacherConsole = () => {
     }
   };
 
-
-  const handleStartScreenShare = async () => {
-    setIsScreenSharing(true);
-    const sourceId = await api.screen.getScreenSourceId();
-    const stream = await (navigator.mediaDevices as any).getUserMedia({
-      audio: false,
-      video: {
-        mandatory: {
-          chromeMediaSource: 'desktop',
-          chromeMediaSourceId: sourceId,
-        },
-      },
-    });
-
-    for (const user of activeUsers) {
-      socket.emit('start-screen-share', {
-        deviceId: user.deviceId,
-        stream,
-      });
-    }
-  };
-
-  const handleStopScreenShare = () => {
-    setIsScreenSharing(false);
-  };
-
   const handleLaunchWebpage = () => {
     if (selectedSubject) {
       for (const user of activeUsers) {
@@ -493,7 +472,6 @@ export const TeacherConsole = () => {
   // Update the renderStudentScreen function to include click handling
   const renderStudentScreen = useCallback(
     (userId: string, student: StudentInfo) => {
-
       const screenState = studentScreenState[userId];
 
       return (
@@ -521,7 +499,6 @@ export const TeacherConsole = () => {
               <Badge variant="default" className="text-xs">
                 Active
               </Badge>
-              
             </div>
           </div>
 
@@ -535,7 +512,9 @@ export const TeacherConsole = () => {
                   className="object-cover w-full h-full"
                 />
               ) : (
-                <p className="text-sm text-gray-400">No screen data available</p>
+                <p className="text-sm text-gray-400">
+                  No screen data available
+                </p>
               )}
             </div>
           </div>
@@ -544,6 +523,137 @@ export const TeacherConsole = () => {
     },
     [studentScreenState],
   );
+
+
+
+  const handleStartScreenShare = async () => {
+    try {
+      const sourceId = await api.screen.getScreenSourceId();
+      const stream = await (navigator.mediaDevices as any).getUserMedia({
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: sourceId,
+          },
+        },
+      });
+      
+      localStreamRef.current = stream;
+      setIsScreenSharing(true);
+
+      for (const activeUser of activeUsers) {
+        const pc = new RTCPeerConnection(PC_CONFIG);
+        pcRefs.current[activeUser.userId] = pc;
+
+        stream.getTracks().forEach((track: MediaStreamTrack) => {
+          pc.addTrack(track, stream);
+        });
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            socket.emit('candidate', {
+              candidate: event.candidate,
+              candidateSendID: user.id,
+              candidateReceiveID: activeUser.userId,
+            });
+          }
+        };
+
+        pc.onconnectionstatechange = () => {
+          console.log(`Connection state for ${activeUser.userId}:`, pc.connectionState);
+          if (pc.connectionState === 'failed') {
+            pc.restartIce();
+          }
+        };
+
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          
+          socket.emit('offer', {
+            sdp: offer,
+            offerSendID: user.id,
+            offerReceiveID: activeUser.userId,
+          });
+        } catch (error) {
+          console.error('Error creating/sending offer:', error);
+          throw error;
+        }
+      }
+    } catch (error) {
+      console.error('Error starting screen share:', error);
+      setIsScreenSharing(false);
+      localStreamRef.current?.getTracks().forEach(track => track.stop());
+      Object.values(pcRefs.current).forEach(pc => pc.close());
+      pcRefs.current = {};
+      
+      toast({
+        title: 'Error',
+        description: 'Failed to start screen sharing',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleStopScreenShare = () => {
+    try {
+      // Stop all tracks in the local stream
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+      
+      // Close and cleanup all peer connections
+      Object.values(pcRefs.current).forEach((pc) => {
+        pc.close();
+      });
+      
+      pcRefs.current = {};
+      setIsScreenSharing(false);
+      
+      // Notify students that screen sharing has stopped
+      activeUsers.forEach((activeUser) => {
+        socket.emit('screen-share-stopped', {
+          senderId: user.id,
+          receiverId: activeUser.userId,
+        });
+      });
+    } catch (error) {
+      console.error('Error stopping screen share:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (!socket || !isConnected || !user) return;
+
+    const handleAnswer = async ({ sdp, answerSendID }: { sdp: RTCSessionDescriptionInit; answerSendID: string }) => {
+      try {
+        const pc = pcRefs.current[answerSendID];
+        if (pc) {
+          await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        }
+      } catch (error) {
+        console.error('Error handling answer:', error);
+      }
+    };
+
+    const handleCandidate = async ({ candidate, candidateSendID }: { candidate: RTCIceCandidate; candidateSendID: string }) => {
+      try {
+        const pc = pcRefs.current[candidateSendID];
+        if (pc) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        }
+      } catch (error) {
+        console.error('Error handling ICE candidate:', error);
+      }
+    };
+
+    socket.on('answer', handleAnswer);
+    socket.on('candidate', handleCandidate);
+
+    return () => {
+      socket.off('answer', handleAnswer);
+      socket.off('candidate', handleCandidate);
+    };
+  }, [socket, isConnected, user]);
 
   useEffect(() => {
     if (socket && isConnected && selectedSubject) {
@@ -580,10 +690,9 @@ export const TeacherConsole = () => {
       });
 
       socket.on('screen-data', ({ userId, screenData }) => {
-        //TODO: Implement screen data handling
         handleScreenUpdate(userId, screenData);
-      
       });
+
 
       return () => {
         socket.off('student-joined');
@@ -603,7 +712,7 @@ export const TeacherConsole = () => {
           subjectId: selectedSubject.id,
         });
       });
-    }else{
+    } else {
       activeUsers.forEach((user) => {
         socket.emit('hide-screen', {
           deviceId: user.deviceId,
@@ -624,9 +733,14 @@ export const TeacherConsole = () => {
     [],
   );
 
+  const handleConfirmShareScreen = () => {
+    setIsShareScreenDialogOpen(false);
+    handleStartScreenShare();
+  };
 
-  const handleLiveQuiz = () => {
-    //TODO: Implement live quiz
+  const handleConfirmShowScreens = () => {
+    setIsShowScreensDialogOpen(false);
+    setShowScreens(true);
   };
 
   return (
@@ -679,7 +793,7 @@ export const TeacherConsole = () => {
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton
-                      onClick={handleLiveQuiz}
+                      onClick={() => setIsBeginQuizDialogOpen(true)}
                       className="w-full"
                     >
                       <PlayIcon className="h-4 w-4 mr-2" />
@@ -714,13 +828,15 @@ export const TeacherConsole = () => {
                       onClick={
                         isScreenSharing
                           ? handleStopScreenShare
-                          : handleStartScreenShare
+                          : () => setIsShareScreenDialogOpen(true)
                       }
                       className="w-full"
                     >
                       <Share className="h-4 w-4 mr-2" />
                       <span>
-                        {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
+                        {isScreenSharing
+                          ? 'Stop Sharing'
+                          : 'Share Screen (Beta)'}
                       </span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -910,19 +1026,21 @@ export const TeacherConsole = () => {
                         className="flex items-center space-x-2"
                       >
                         <Share className="h-4 w-4" />
-                        <span>Share</span>
+                        <span>Share (Beta)</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
                       <DropdownMenuItem
-                        onClick={
+                        onClick={() =>
                           isScreenSharing
-                            ? handleStopScreenShare
-                            : handleStartScreenShare
+                            ? handleStopScreenShare()
+                            : setIsShareScreenDialogOpen(true)
                         }
                       >
                         <MonitorPlay className="h-4 w-4 mr-2" />
-                        {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
+                        {isScreenSharing
+                          ? 'Stop Sharing'
+                          : 'Share Screen (Beta)'}
                         {!isScreenSharing && (
                           <Badge variant="outline" className="ml-2">
                             Start Now
@@ -1221,11 +1339,15 @@ export const TeacherConsole = () => {
                     </Badge>
                     <div className="flex items-center space-x-2">
                       <span className="text-sm text-gray-700">
-                        Show Screens
+                        Show Screens (Beta)
                       </span>
                       <Switch
                         checked={showScreens}
-                        onCheckedChange={setShowScreens}
+                        onCheckedChange={() =>
+                          showScreens
+                            ? setShowScreens(false)
+                            : setIsShowScreensDialogOpen(true)
+                        }
                       />
                     </div>
                   </div>
@@ -1342,153 +1464,43 @@ export const TeacherConsole = () => {
               </Tabs>
             </div>
             <Toaster />
-            {/* Add this new Dialog component for creating a subject */}
-            <Dialog
-              open={isCreateSubjectDialogOpen}
+            <CreateSubjectModal
+              isOpen={isCreateSubjectDialogOpen}
               onOpenChange={setIsCreateSubjectDialogOpen}
-            >
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Create New Subject</DialogTitle>
-                  <DialogDescription>
-                    Enter the details of the new subject you want to create.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="name" className="text-right">
-                      Name
-                    </Label>
-                    <Input
-                      id="name"
-                      value={newSubjectName}
-                      onChange={(e) => setNewSubjectName(e.target.value)}
-                      className="col-span-3"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="code" className="text-right">
-                      Code
-                    </Label>
-                    <Input
-                      id="code"
-                      value={newSubjectCode}
-                      readOnly
-                      className="col-span-3 bg-gray-100"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="description" className="text-right">
-                      Description
-                    </Label>
-                    <Textarea
-                      id="description"
-                      value={newSubjectDescription}
-                      onChange={(e) => setNewSubjectDescription(e.target.value)}
-                      className="col-span-3"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={handleCreateSubject}>Create Subject</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <Dialog
-              open={isWebpageDialogOpen}
+              newSubjectName={newSubjectName}
+              setNewSubjectName={setNewSubjectName}
+              newSubjectCode={newSubjectCode}
+              newSubjectDescription={newSubjectDescription}
+              setNewSubjectDescription={setNewSubjectDescription}
+              handleCreateSubject={handleCreateSubject}
+            />
+            <WebpageModal
+              isOpen={isWebpageDialogOpen}
               onOpenChange={setIsWebpageDialogOpen}
-            >
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Launch Webpage</DialogTitle>
-                  <DialogDescription>
-                    Enter the URL of the webpage you want to launch on student
-                    devices.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="webpage-url" className="text-right">
-                      URL
-                    </Label>
-                    <Input
-                      id="webpage-url"
-                      value={webpageUrl}
-                      onChange={(e) => setWebpageUrl(e.target.value)}
-                      className="col-span-3"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={handleLaunchWebpage}>Launch</Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsWebpageDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <Dialog
-              open={isBeginQuizDialogOpen}
+              webpageUrl={webpageUrl}
+              setWebpageUrl={setWebpageUrl}
+              handleLaunchWebpage={handleLaunchWebpage}
+            />
+            <BeginQuizModal
+              isOpen={isBeginQuizDialogOpen}
               onOpenChange={setIsBeginQuizDialogOpen}
-            >
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Begin a Quiz</DialogTitle>
-                  <DialogDescription>
-                    Choose a published quiz to begin or start a live quiz.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="quiz" className="text-right">
-                      Quiz
-                    </Label>
-                    <select
-                      id="quiz"
-                      value={selectedQuiz || ''}
-                      onChange={(e) => setSelectedQuiz(e.target.value)}
-                      className="col-span-3 bg-gray-100"
-                    >
-                      <option value="" disabled>
-                        {quizzes && quizzes.length > 0
-                          ? 'Select a quiz'
-                          : 'No quizzes available'}
-                      </option>
-                      {quizzes?.map((quiz) => (
-                        <option key={quiz.id} value={quiz.id}>
-                          {quiz.title}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    onClick={handleStartLiveQuiz}
-                    disabled={!selectedQuiz}
-                  >
-                    Start Live
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      navigate(`/quiz/library/${selectedSubject?.id}`)
-                    }
-                  >
-                    Manage Quiz
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsBeginQuizDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+              quizzes={quizzes}
+              selectedQuiz={selectedQuiz}
+              setSelectedQuiz={setSelectedQuiz}
+              handleStartLiveQuiz={handleStartLiveQuiz}
+              navigate={navigate}
+              selectedSubject={selectedSubject}
+            />
+            <ShareScreenModal
+              isOpen={isShareScreenDialogOpen}
+              onOpenChange={setIsShareScreenDialogOpen}
+              handleConfirmShareScreen={handleConfirmShareScreen}
+            />
+            <ShowScreensModal
+              isOpen={isShowScreensDialogOpen}
+              onOpenChange={setIsShowScreensDialogOpen}
+              handleConfirmShowScreens={handleConfirmShowScreens}
+            />
           </main>
         </div>
       </div>

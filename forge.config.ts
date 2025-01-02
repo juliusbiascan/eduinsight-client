@@ -1,5 +1,8 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
-import { MakerSquirrel, MakerSquirrelConfig } from '@electron-forge/maker-squirrel';
+import {
+  MakerSquirrel,
+  MakerSquirrelConfig,
+} from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
@@ -13,22 +16,24 @@ import path from 'path';
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    asar: {
+      unpack: '**/+(*.node|*.dll|)',
+    },
     name: 'EduInsight Client',
-    icon: path.resolve(__dirname, "images/app-icon.ico"),
+    icon: path.resolve(__dirname, 'images/app-icon.ico'),
     appBundleId: 'io.eduinsight.client',
     appCopyright: 'Copyright © 2024',
     extraResource: [
-      "node_modules/@paymoapp/electron-shutdown-handler/build/Release/PaymoWinShutdownHandler.node"
-    ]
+      'node_modules/@paymoapp/electron-shutdown-handler/build/Release/PaymoWinShutdownHandler.node',
+    ],
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({
-      setupExe: "EduInsight Client Setup.exe",
-      setupIcon: path.resolve(__dirname, "images/app-icon.ico"),
-      loadingGif: path.resolve(__dirname, "images/setup.gif"),
-      ...(({
+      setupExe: 'EduInsight Client Setup.exe',
+      setupIcon: path.resolve(__dirname, 'images/app-icon.ico'),
+      loadingGif: path.resolve(__dirname, 'images/setup.gif'),
+      ...({
         // Add the shortcuts configuration here
         shortcuts: [
           {
@@ -43,9 +48,12 @@ const config: ForgeConfig = {
           },
           // Add more shortcuts as needed
         ],
-      } as any) as MakerSquirrelConfig),
+      } as any as MakerSquirrelConfig),
     }),
-    new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
+    new MakerZIP({}, ['darwin']),
+    new MakerRpm({}),
+    new MakerDeb({}),
+  ],
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({

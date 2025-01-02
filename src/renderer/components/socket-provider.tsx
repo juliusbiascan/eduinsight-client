@@ -12,6 +12,7 @@ interface SocketContextType {
 const SocketContext = createContext<SocketContextType | null>(null);
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
+  const [socketUrl, setSocketUrl] = useState<string>("https://192.168.1.82:4000");
   const [socketState, setSocketState] = useState<SocketContextType>({
     socket: null,
     isConnected: false,
@@ -21,8 +22,15 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
 
   useEffect(() => {
-    console.log('Connecting to server:', "https://192.168.1.82:4000");
-    const socketInstance = initSocket("https://192.168.1.82:4000");
+    const fetchSocketUrl = async () => {
+      const socketUrl = await api.store.get('socketUrl') as string;
+      setSocketUrl(socketUrl);
+    };
+
+    fetchSocketUrl();
+
+    console.log('Connecting to server:', socketUrl);
+    const socketInstance = initSocket(socketUrl);
 
     function onConnect() {
       console.log('Connected to server');

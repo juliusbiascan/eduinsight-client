@@ -1,7 +1,25 @@
 export enum API {
-  URL = 'https://192.168.1.82',
+  URL = '192.168.1.82',
 }
 
+export const PC_CONFIG = {
+  iceServers: [
+    {
+      urls: `stun:${API.URL}:3478`,
+    },
+    {
+      urls: [
+        `turn:${API.URL}:3478?transport=udp`,
+        `turn:${API.URL}:3478?transport=tcp`,
+        `turn:${API.URL}:5349?transport=udp`,
+        `turn:${API.URL}:5349?transport=tcp`,
+      ],
+      username: 'webrtc',
+      credential: 'webrtc123',
+    },
+  ],
+  iceCandidatePoolSize: 10,
+};
 
 /**
  * Browser Window unique identifier names.
@@ -29,7 +47,6 @@ export enum WindowIdentifier {
  * @enum
  */
 export enum IPCRoute {
-
   DATABASE_UPDATE_QUIZ_QUESTIONS_BULK = 'database:update-quiz-questions-bulk',
   OPEN_EXTERNAL_LINK = '/open_external_link',
   WINDOW_OPEN_SETUP = '/window/open-setup',
@@ -103,7 +120,6 @@ export enum IPCRoute {
   DEVICE_GET_DEVICE_ID = '/device/get_device_id',
   DEVICE_START_MONITORING = '/device/start_monitoring',
   DEVICE_STOP_MONITORING = '/device/stop_monitoring',
-
 
   // Add these new routes
   STORE_GET = '/store/get',

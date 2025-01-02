@@ -9,11 +9,12 @@ import {
   Clock,
   Minimize2,
   Folders,
-  Globe2,
   Menu,
+  Settings2Icon,
+  Trash2Icon,
 } from 'lucide-react';
 import { Toaster } from '../../../components/ui/toaster';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import {
@@ -28,7 +29,7 @@ import {
 import { Avatar, AvatarFallback } from '@/renderer/components/ui/avatar';
 import { Badge } from '../../../components/ui/badge';
 import { Label } from '@/renderer/components/ui/label';
-import { WindowIdentifier } from '@/shared/constants';
+import { PC_CONFIG, WindowIdentifier } from '@/shared/constants';
 import {
   Sidebar,
   SidebarContent,
@@ -48,6 +49,17 @@ import {
   DropdownMenuTrigger,
 } from '@radix-ui/react-dropdown-menu';
 import { useSocket } from '@/renderer/components/socket-provider';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/renderer/components/ui/alert-dialog';
 
 export const StudentConsole = () => {
   const { toast } = useToast();
@@ -63,14 +75,17 @@ export const StudentConsole = () => {
   const [isJoining, setIsJoining] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<
     | (Subject & {
-      quizzes: Quiz[];
-      quizRecord: QuizRecord[];
-    })
+        quizzes: Quiz[];
+        quizRecord: QuizRecord[];
+      })
     | null
   >(null);
   const [isLeavingSubject, setIsLeavingSubject] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
+  const [screenSharing, setScreenSharing] = useState(false);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     api.database.getDevice().then((device: Device) => {
@@ -112,9 +127,110 @@ export const StudentConsole = () => {
     if (!user || !socket || !isConnected) {
       return;
     }
+
     socket.emit('join-server', user.id);
+
+    socket.on('screen-share', () => {
+      setScreenSharing(true);
+    });
+
     fetchSubjects();
+    return () => {
+      socket.off('screen-share');
+    };
   }, [user, socket, isConnected]);
+
+  useEffect(() => {
+    if (!socket || !isConnected || !user) return;
+
+    const handleOffer = async ({ sdp, offerSendID }: { sdp: RTCSessionDescriptionInit; offerSendID: string }) => {
+      try {
+        if (pcRef.current) {
+          pcRef.current.close();
+        }
+
+        const pc = new RTCPeerConnection(PC_CONFIG);
+        pcRef.current = pc;
+
+        pc.ontrack = (event) => {
+          if (videoRef.current && event.streams[0]) {
+            videoRef.current.srcObject = event.streams[0];
+          }
+        };
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            socket.emit('candidate', {
+              candidate: event.candidate,
+              candidateSendID: user.id,
+              candidateReceiveID: offerSendID,
+            });
+          }
+        };
+
+        pc.onconnectionstatechange = () => {
+          console.log('Connection state:', pc.connectionState);
+          if (pc.connectionState === 'failed') {
+            pc.restartIce();
+          }
+        };
+
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socket.emit('answer', {
+          sdp: answer,
+          answerSendID: user.id,
+          answerReceiveID: offerSendID,
+        });
+      } catch (error) {
+        console.error('Error handling offer:', error);
+        toast({
+          title: 'Connection Error',
+          description: 'Failed to establish screen sharing connection',
+          variant: 'destructive',
+        });
+      }
+    };
+
+    const handleCandidate = async ({ candidate, candidateSendID }: { candidate: RTCIceCandidateInit; candidateSendID: string }) => {
+      try {
+        console.log('Receive ice candidate from: ', candidateSendID);
+        if (pcRef.current) {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+        }
+      } catch (error) {
+        console.error('Error adding ICE candidate:', error);
+      }
+    };
+
+    const handleScreenShareStopped = () => {
+      if (pcRef.current) {
+        pcRef.current.close();
+        pcRef.current = null;
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      setScreenSharing(false);
+    };
+
+    socket.on('offer', handleOffer);
+    socket.on('candidate', handleCandidate);
+    socket.on('screen-share-stopped', handleScreenShareStopped);
+
+    return () => {
+      socket.off('offer', handleOffer);
+      socket.off('candidate', handleCandidate);
+      socket.off('screen-share-stopped', handleScreenShareStopped);
+      
+      if (pcRef.current) {
+        pcRef.current.close();
+        pcRef.current = null;
+      }
+    };
+  }, [socket, isConnected, user]);
 
   const fetchSubjects = useCallback(async () => {
     if (!user) return;
@@ -479,26 +595,59 @@ export const StudentConsole = () => {
               <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between items-center h-14">
                   <div className="flex space-x-4">
-                    {/* Actions Button */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          className="flex items-center space-x-2"
-                        >
-                          <Globe2 className="h-4 w-4" />
-                          <span>Settings</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem
-                          disabled={isLeavingSubject}
-                          onClick={handleLeaveSubject}
-                        >
-                          {isLeavingSubject ? 'Leaving...' : 'Leave Subject'}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {selectedSubject && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            className="flex items-center space-x-2"
+                          >
+                            <Settings2Icon className="h-4 w-4" />
+                            <span>Settings</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+
+                        <DropdownMenuContent>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <DropdownMenuItem
+                                onSelect={(e) => e.preventDefault()}
+                              >
+                                <Trash2Icon className="h-4 w-4 mr-2" />
+                                Delete Subject
+                              </DropdownMenuItem>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="max-w-[425px]">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>
+                                  Delete Subject
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to leave{' '}
+                                  {selectedSubject.name}? This will remove all
+                                  associated data, including quizzes and student
+                                  records. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter className="gap-2">
+                                <AlertDialogCancel className="mt-2">
+                                  Cancel
+                                </AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={handleLeaveSubject}
+                                  className="bg-red-600 hover:bg-red-700 text-white mt-2"
+                                  disabled={isLeavingSubject}
+                                >
+                                  {isLeavingSubject
+                                    ? 'Leaving...'
+                                    : 'Leave Subject'}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
                 </div>
               </div>
@@ -606,7 +755,8 @@ export const StudentConsole = () => {
                     .map((quiz) => {
                       const quizRecord = selectedSubject.quizRecord.find(
                         (record) =>
-                          record.quizId === quiz.id && record.userId === user.id
+                          record.quizId === quiz.id &&
+                          record.userId === user.id,
                       );
                       const isQuizDone = !!quizRecord;
 
@@ -618,7 +768,9 @@ export const StudentConsole = () => {
                           <div
                             className="h-32 rounded-t-lg flex items-center justify-center"
                             style={{
-                              backgroundColor: quiz.color || `hsl(${Math.random() * 360}, 70%, 90%)`,
+                              backgroundColor:
+                                quiz.color ||
+                                `hsl(${Math.random() * 360}, 70%, 90%)`,
                             }}
                           >
                             <h3 className="text-lg font-semibold text-gray-800 px-4 text-center">
@@ -627,12 +779,18 @@ export const StudentConsole = () => {
                           </div>
                           <div className="p-4 space-y-3">
                             <div className="flex items-center justify-between">
-                              <Badge variant={isQuizDone ? "secondary" : "outline"}>
-                                {isQuizDone ? "Completed" : "Not Started"}
+                              <Badge
+                                variant={isQuizDone ? 'secondary' : 'outline'}
+                              >
+                                {isQuizDone ? 'Completed' : 'Not Started'}
                               </Badge>
                               {isQuizDone && (
-                                <Badge variant="success" className="bg-green-100 text-green-800">
-                                  Score: {quizRecord.score}/{quizRecord.totalPoints}
+                                <Badge
+                                  variant="success"
+                                  className="bg-green-100 text-green-800"
+                                >
+                                  Score: {quizRecord.score}/
+                                  {quizRecord.totalPoints}
                                 </Badge>
                               )}
                             </div>
@@ -691,6 +849,16 @@ export const StudentConsole = () => {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            <div className="relative">
+              {screenSharing && (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  className="w-full h-full rounded-lg"
+                />
+              )}
+            </div>
           </main>
         </div>
       </div>
