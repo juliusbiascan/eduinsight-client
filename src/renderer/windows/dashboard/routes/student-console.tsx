@@ -130,20 +130,20 @@ export const StudentConsole = () => {
 
     socket.emit('join-server', user.id);
 
-    socket.on('screen-share', () => {
-      setScreenSharing(true);
-    });
-
     fetchSubjects();
-    return () => {
-      socket.off('screen-share');
-    };
   }, [user, socket, isConnected]);
 
   useEffect(() => {
     if (!socket || !isConnected || !user) return;
 
-    const handleOffer = async ({ sdp, offerSendID }: { sdp: RTCSessionDescriptionInit; offerSendID: string }) => {
+    const handleOffer = async ({
+      sdp,
+      offerSendID,
+    }: {
+      sdp: RTCSessionDescriptionInit;
+      offerSendID: string;
+    }) => {
+      console.log('Received offer from:', offerSendID);
       try {
         if (pcRef.current) {
           pcRef.current.close();
@@ -168,13 +168,6 @@ export const StudentConsole = () => {
           }
         };
 
-        pc.onconnectionstatechange = () => {
-          console.log('Connection state:', pc.connectionState);
-          if (pc.connectionState === 'failed') {
-            pc.restartIce();
-          }
-        };
-
         await pc.setRemoteDescription(new RTCSessionDescription(sdp));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -184,6 +177,7 @@ export const StudentConsole = () => {
           answerSendID: user.id,
           answerReceiveID: offerSendID,
         });
+        setScreenSharing(true);
       } catch (error) {
         console.error('Error handling offer:', error);
         toast({
@@ -194,9 +188,15 @@ export const StudentConsole = () => {
       }
     };
 
-    const handleCandidate = async ({ candidate, candidateSendID }: { candidate: RTCIceCandidateInit; candidateSendID: string }) => {
+    const handleCandidate = async ({
+      candidate,
+      candidateSendID,
+    }: {
+      candidate: RTCIceCandidateInit;
+      candidateSendID: string;
+    }) => {
+      console.log('Received ICE candidate from:', candidateSendID);
       try {
-        console.log('Receive ice candidate from: ', candidateSendID);
         if (pcRef.current) {
           await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
         }
@@ -224,7 +224,7 @@ export const StudentConsole = () => {
       socket.off('offer', handleOffer);
       socket.off('candidate', handleCandidate);
       socket.off('screen-share-stopped', handleScreenShareStopped);
-      
+
       if (pcRef.current) {
         pcRef.current.close();
         pcRef.current = null;

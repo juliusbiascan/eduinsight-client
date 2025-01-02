@@ -570,10 +570,9 @@ export const TeacherConsole = () => {
         try {
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
-          
           socket.emit('offer', {
             sdp: offer,
-            offerSendID: user.id,
+            offerSendID: user.id, // Make sure this matches
             offerReceiveID: activeUser.userId,
           });
         } catch (error) {
@@ -635,7 +634,7 @@ export const TeacherConsole = () => {
       }
     };
 
-    const handleCandidate = async ({ candidate, candidateSendID }: { candidate: RTCIceCandidate; candidateSendID: string }) => {
+    const handleCandidate = async ({ candidate, candidateSendID }: { candidate: RTCIceCandidateInit; candidateSendID: string }) => {
       try {
         const pc = pcRefs.current[candidateSendID];
         if (pc) {
