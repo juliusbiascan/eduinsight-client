@@ -216,13 +216,13 @@ export const StudentConsole = () => {
       setScreenSharing(false);
     };
 
-    socket.on('offer', handleOffer);
-    socket.on('candidate', handleCandidate);
+    socket.on('getOffer', handleOffer);
+    socket.on('getCandidate', handleCandidate);
     socket.on('screen-share-stopped', handleScreenShareStopped);
 
     return () => {
-      socket.off('offer', handleOffer);
-      socket.off('candidate', handleCandidate);
+      socket.off('getOffer', handleOffer);
+      socket.off('getCandidate', handleCandidate);
       socket.off('screen-share-stopped', handleScreenShareStopped);
 
       if (pcRef.current) {
