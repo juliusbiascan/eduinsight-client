@@ -238,8 +238,8 @@ function handleOnReady() {
     },
   );
   // Ignore Chromium selfsigned warning errors
-  app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
-
+  app.commandLine.appendSwitch('ignore-certificate-errors');
+  app.commandLine.appendSwitch('allow-insecure-localhost');
   app.on('ready', () => {
     desktopCapturer
       .getSources({
@@ -257,7 +257,7 @@ function handleOnReady() {
           },
         });
 
-       console.log('stream:', stream);
+        console.log('stream:', stream);
       })
       .catch((error) => console.error('Error capturing screen:', error));
     handleOnReady();

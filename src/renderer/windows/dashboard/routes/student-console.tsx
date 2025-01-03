@@ -29,7 +29,7 @@ import {
 import { Avatar, AvatarFallback } from '@/renderer/components/ui/avatar';
 import { Badge } from '../../../components/ui/badge';
 import { Label } from '@/renderer/components/ui/label';
-import { PC_CONFIG, WindowIdentifier } from '@/shared/constants';
+import { WindowIdentifier } from '@/shared/constants';
 import {
   Sidebar,
   SidebarContent,
@@ -60,6 +60,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/renderer/components/ui/alert-dialog';
+import Peer from 'simple-peer';
 
 export const StudentConsole = () => {
   const { toast } = useToast();
@@ -84,7 +85,7 @@ export const StudentConsole = () => {
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
-  const pcRef = useRef<RTCPeerConnection | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -136,99 +137,51 @@ export const StudentConsole = () => {
   useEffect(() => {
     if (!socket || !isConnected || !user) return;
 
-    const handleOffer = async ({
-      sdp,
-      offerSendID,
+    const peer = new Peer({
+      trickle: false,
+    });
+
+    const handleScreenShareOffer = ({
+      senderId,
+      signalData,
     }: {
-      sdp: RTCSessionDescriptionInit;
-      offerSendID: string;
+      senderId: string;
+      receiverId: string;
+      signalData: Peer.SignalData;
     }) => {
-      console.log('Received offer from:', offerSendID);
-      try {
-        if (pcRef.current) {
-          pcRef.current.close();
-        }
-
-        const pc = new RTCPeerConnection(PC_CONFIG);
-        pcRef.current = pc;
-
-        pc.ontrack = (event) => {
-          if (videoRef.current && event.streams[0]) {
-            videoRef.current.srcObject = event.streams[0];
-          }
-        };
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            socket.emit('candidate', {
-              candidate: event.candidate,
-              candidateSendID: user.id,
-              candidateReceiveID: offerSendID,
-            });
-          }
-        };
-
-        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        socket.emit('answer', {
-          sdp: answer,
-          answerSendID: user.id,
-          answerReceiveID: offerSendID,
-        });
-        setScreenSharing(true);
-      } catch (error) {
-        console.error('Error handling offer:', error);
-        toast({
-          title: 'Connection Error',
-          description: 'Failed to establish screen sharing connection',
-          variant: 'destructive',
-        });
-      }
+      console.log('Received screen share offer:', senderId);
+      peer.signal(signalData);
     };
 
-    const handleCandidate = async ({
-      candidate,
-      candidateSendID,
-    }: {
-      candidate: RTCIceCandidateInit;
-      candidateSendID: string;
-    }) => {
-      console.log('Received ICE candidate from:', candidateSendID);
-      try {
-        if (pcRef.current) {
-          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-        }
-      } catch (error) {
-        console.error('Error adding ICE candidate:', error);
+    peer.on('signal', (data) => {
+      socket.emit('screen-share-offer', {
+        senderId: user.id,
+        receiverId: selectedSubject?.id || '',
+        signalData: data,
+      });
+    });
+
+    peer.on('stream', (stream: MediaStream) => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
       }
-    };
+      setScreenSharing(true);
+    });
 
     const handleScreenShareStopped = () => {
-      if (pcRef.current) {
-        pcRef.current.close();
-        pcRef.current = null;
-      }
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
       setScreenSharing(false);
     };
 
-    socket.on('getOffer', handleOffer);
-    socket.on('getCandidate', handleCandidate);
+    socket.on('screen-share-offer', handleScreenShareOffer);
     socket.on('screen-share-stopped', handleScreenShareStopped);
 
     return () => {
-      socket.off('getOffer', handleOffer);
-      socket.off('getCandidate', handleCandidate);
+      peer.destroy();
+      socket.off('screen-share-offer', handleScreenShareOffer);
       socket.off('screen-share-stopped', handleScreenShareStopped);
-
-      if (pcRef.current) {
-        pcRef.current.close();
-        pcRef.current = null;
-      }
     };
   }, [socket, isConnected, user]);
 

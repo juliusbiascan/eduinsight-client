@@ -2,26 +2,6 @@ export enum API {
   URL = '192.168.1.82',
 }
 
-export const PC_CONFIG = {
-  iceServers: [
-    {
-      urls: `stun:${API.URL}:3478`,
-    },
-    {
-      urls: [
-        `turn:${API.URL}:3478?transport=udp`,
-        `turn:${API.URL}:3478?transport=tcp`,
-        `turn:${API.URL}:5349?transport=udp`,
-        `turn:${API.URL}:5349?transport=tcp`
-      ],
-      username: "webrtc",
-      credential: "webrtc123"
-    }
-  ],
-  iceCandidatePoolSize: 10,
-  
-};
-
 /**
  * Browser Window unique identifier names.
  *

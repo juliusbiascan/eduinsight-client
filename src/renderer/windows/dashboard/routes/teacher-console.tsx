@@ -14,7 +14,7 @@ import {
   SubjectRecord,
 } from '@prisma/client';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { PC_CONFIG, WindowIdentifier } from '@/shared/constants';
+import { WindowIdentifier } from '@/shared/constants';
 import {
   Dialog,
   DialogContent,
@@ -93,6 +93,7 @@ import { WebpageModal } from '../../../components/modals/webpage-modal';
 import { BeginQuizModal } from '../../../components/modals/begin-quiz-modal';
 import { ShareScreenModal } from '../../../components/modals/share-screen-modal';
 import { ShowScreensModal } from '../../../components/modals/show-screen-modal';
+import Peer from 'simple-peer';
 
 interface StudentInfo {
   id: string;
@@ -147,8 +148,7 @@ export const TeacherConsole = () => {
     useState<Array<Quiz & { questions: Array<QuizQuestion> }>>();
   const [isShareScreenDialogOpen, setIsShareScreenDialogOpen] = useState(false);
   const [isShowScreensDialogOpen, setIsShowScreensDialogOpen] = useState(false);
-  const pcRefs = useRef<{ [key: string]: RTCPeerConnection }>({});
-
+ 
   const handleStartLiveQuiz = () => {
     for (const user of activeUsers) {
       socket.emit('start-live-quiz', {
@@ -542,52 +542,27 @@ export const TeacherConsole = () => {
       localStreamRef.current = stream;
       setIsScreenSharing(true);
 
-      for (const activeUser of activeUsers) {
-        const pc = new RTCPeerConnection(PC_CONFIG);
-        pcRefs.current[activeUser.userId] = pc;
+      const peer = new Peer({
+        initiator: true,
+        trickle: false,
+        stream,
+      });
 
-        stream.getTracks().forEach((track: MediaStreamTrack) => {
-          pc.addTrack(track, stream);
-        });
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            console.log('Sending ICE candidate to:', activeUser.userId);
-            socket.emit('candidate', {
-              candidate: event.candidate,
-              candidateSendID: user.id,
-              candidateReceiveID: activeUser.userId,
-            });
-          }
-        };
-
-        pc.onconnectionstatechange = () => {
-          console.log(`Connection state for ${activeUser.userId}:`, pc.connectionState);
-          if (pc.connectionState === 'failed') {
-            pc.restartIce();
-          }
-        };
-
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          console.log('Sending offer to:', activeUser.userId);
-          socket.emit('offer', {
-            sdp: offer,
-            offerSendID: user.id, // Make sure this matches
-            offerReceiveID: activeUser.userId,
+      peer.on('signal', (data) => {
+        activeUsers.forEach((activeUser) => {
+          socket.emit('screen-share-offer', {
+            senderId: user.id,
+            receiverId: activeUser.userId,
+            signalData: data,
           });
-        } catch (error) {
-          console.error('Error creating/sending offer:', error);
-          throw error;
-        }
-      }
+        });
+      });
+
+      
     } catch (error) {
       console.error('Error starting screen share:', error);
       setIsScreenSharing(false);
       localStreamRef.current?.getTracks().forEach(track => track.stop());
-      Object.values(pcRefs.current).forEach(pc => pc.close());
-      pcRefs.current = {};
       
       toast({
         title: 'Error',
@@ -602,12 +577,6 @@ export const TeacherConsole = () => {
       // Stop all tracks in the local stream
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       
-      // Close and cleanup all peer connections
-      Object.values(pcRefs.current).forEach((pc) => {
-        pc.close();
-      });
-      
-      pcRefs.current = {};
       setIsScreenSharing(false);
       
       // Notify students that screen sharing has stopped
@@ -622,39 +591,6 @@ export const TeacherConsole = () => {
     }
   };
 
-  useEffect(() => {
-    if (!socket || !isConnected || !user) return;
-
-    const handleAnswer = async ({ sdp, answerSendID }: { sdp: RTCSessionDescriptionInit; answerSendID: string }) => {
-      try {
-        const pc = pcRefs.current[answerSendID];
-        if (pc) {
-          await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-        }
-      } catch (error) {
-        console.error('Error handling answer:', error);
-      }
-    };
-
-    const handleCandidate = async ({ candidate, candidateSendID }: { candidate: RTCIceCandidateInit; candidateSendID: string }) => {
-      try {
-        const pc = pcRefs.current[candidateSendID];
-        if (pc) {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        }
-      } catch (error) {
-        console.error('Error handling ICE candidate:', error);
-      }
-    };
-
-    socket.on('getAnswer', handleAnswer);
-    socket.on('getCandidate', handleCandidate);
-
-    return () => {
-      socket.off('getAnswer', handleAnswer);
-      socket.off('getCandidate', handleCandidate);
-    };
-  }, [socket, isConnected, user]);
 
   useEffect(() => {
     if (socket && isConnected && selectedSubject) {
