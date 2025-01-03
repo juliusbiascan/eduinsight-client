@@ -87,6 +87,7 @@ export const StudentConsole = () => {
   const [screenSharing, setScreenSharing] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const peerRef = useRef<Peer.Instance | null>(null);
 
   useEffect(() => {
     api.database.getDevice().then((device: Device) => {
@@ -138,8 +139,11 @@ export const StudentConsole = () => {
     if (!socket || !isConnected || !user) return;
 
     const peer = new Peer({
-      trickle: false,
+      initiator: false,
+			trickle: false,
     });
+
+    peerRef.current = peer;
 
     const handleScreenShareOffer = ({
       senderId,
@@ -156,7 +160,7 @@ export const StudentConsole = () => {
     peer.on('signal', (data) => {
       socket.emit('screen-share-offer', {
         senderId: user.id,
-        receiverId: selectedSubject?.id || '',
+        receiverId: selectedSubject.id,
         signalData: data,
       });
     });
@@ -164,6 +168,7 @@ export const StudentConsole = () => {
     peer.on('stream', (stream: MediaStream) => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.requestFullscreen();
       }
       setScreenSharing(true);
     });
@@ -171,6 +176,7 @@ export const StudentConsole = () => {
     const handleScreenShareStopped = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = null;
+        document.exitFullscreen();
       }
       setScreenSharing(false);
     };
@@ -180,6 +186,7 @@ export const StudentConsole = () => {
 
     return () => {
       peer.destroy();
+      peerRef.current = null;
       socket.off('screen-share-offer', handleScreenShareOffer);
       socket.off('screen-share-stopped', handleScreenShareStopped);
     };

@@ -119,6 +119,7 @@ export const TeacherConsole = () => {
     }
   >();
   const localStreamRef = useRef<MediaStream | null>(null);
+  const peerRef = useRef<Peer.Instance | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [newSubjectName, setNewSubjectName] = useState<string>('');
@@ -148,7 +149,7 @@ export const TeacherConsole = () => {
     useState<Array<Quiz & { questions: Array<QuizQuestion> }>>();
   const [isShareScreenDialogOpen, setIsShareScreenDialogOpen] = useState(false);
   const [isShowScreensDialogOpen, setIsShowScreensDialogOpen] = useState(false);
- 
+
   const handleStartLiveQuiz = () => {
     for (const user of activeUsers) {
       socket.emit('start-live-quiz', {
@@ -524,8 +525,6 @@ export const TeacherConsole = () => {
     [studentScreenState],
   );
 
-
-
   const handleStartScreenShare = async () => {
     try {
       const sourceId = await api.screen.getScreenSourceId();
@@ -538,7 +537,7 @@ export const TeacherConsole = () => {
           },
         },
       });
-      
+
       localStreamRef.current = stream;
       setIsScreenSharing(true);
 
@@ -547,6 +546,8 @@ export const TeacherConsole = () => {
         trickle: false,
         stream,
       });
+
+      peerRef.current = peer;
 
       peer.on('signal', (data) => {
         activeUsers.forEach((activeUser) => {
@@ -557,13 +558,11 @@ export const TeacherConsole = () => {
           });
         });
       });
-
-      
     } catch (error) {
       console.error('Error starting screen share:', error);
       setIsScreenSharing(false);
-      localStreamRef.current?.getTracks().forEach(track => track.stop());
-      
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+
       toast({
         title: 'Error',
         description: 'Failed to start screen sharing',
@@ -576,9 +575,9 @@ export const TeacherConsole = () => {
     try {
       // Stop all tracks in the local stream
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
-      
+
       setIsScreenSharing(false);
-      
+
       // Notify students that screen sharing has stopped
       activeUsers.forEach((activeUser) => {
         socket.emit('screen-share-stopped', {
@@ -586,14 +585,29 @@ export const TeacherConsole = () => {
           receiverId: activeUser.userId,
         });
       });
+
+      // Destroy the peer connection
+      peerRef.current?.destroy();
+      peerRef.current = null;
     } catch (error) {
       console.error('Error stopping screen share:', error);
     }
   };
 
-
   useEffect(() => {
     if (socket && isConnected && selectedSubject) {
+      const handleScreenShareOffer = ({
+        senderId,
+        signalData,
+      }: {
+        senderId: string;
+        receiverId: string;
+        signalData: Peer.SignalData;
+      }) => {
+        console.log('Received screen share offer:', senderId);
+        peerRef.current.signal(signalData);
+      };
+
       socket.emit('join-server', selectedSubject.id);
 
       socket.on('student-joined', ({ _userId, subjectId }) => {
@@ -630,8 +644,10 @@ export const TeacherConsole = () => {
         handleScreenUpdate(userId, screenData);
       });
 
-
+      socket.on('screen-share-offer', handleScreenShareOffer);
+      
       return () => {
+        socket.off('screen-share-offer');
         socket.off('student-joined');
         socket.off('student-left');
         socket.off('student-logged-out');
