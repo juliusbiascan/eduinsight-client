@@ -174,6 +174,7 @@ export const StudentConsole = () => {
     });
 
     const handleScreenShareStopped = () => {
+      console.log('Screen share stopped');
       if (videoRef.current) {
         videoRef.current.srcObject = null;
         document.exitFullscreen();
