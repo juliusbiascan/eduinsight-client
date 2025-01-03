@@ -552,6 +552,7 @@ export const TeacherConsole = () => {
 
         pc.onicecandidate = (event) => {
           if (event.candidate) {
+            console.log('Sending ICE candidate to:', activeUser.userId);
             socket.emit('candidate', {
               candidate: event.candidate,
               candidateSendID: user.id,
@@ -570,6 +571,7 @@ export const TeacherConsole = () => {
         try {
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
+          console.log('Sending offer to:', activeUser.userId);
           socket.emit('offer', {
             sdp: offer,
             offerSendID: user.id, // Make sure this matches
@@ -645,12 +647,12 @@ export const TeacherConsole = () => {
       }
     };
 
-    socket.on('answer', handleAnswer);
-    socket.on('candidate', handleCandidate);
+    socket.on('getAnswer', handleAnswer);
+    socket.on('getCandidate', handleCandidate);
 
     return () => {
-      socket.off('answer', handleAnswer);
-      socket.off('candidate', handleCandidate);
+      socket.off('getAnswer', handleAnswer);
+      socket.off('getCandidate', handleCandidate);
     };
   }, [socket, isConnected, user]);
 

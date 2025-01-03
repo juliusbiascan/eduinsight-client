@@ -12,13 +12,14 @@ export const PC_CONFIG = {
         `turn:${API.URL}:3478?transport=udp`,
         `turn:${API.URL}:3478?transport=tcp`,
         `turn:${API.URL}:5349?transport=udp`,
-        `turn:${API.URL}:5349?transport=tcp`,
+        `turn:${API.URL}:5349?transport=tcp`
       ],
-      username: 'webrtc',
-      credential: 'webrtc123',
-    },
+      username: "webrtc",
+      credential: "webrtc123"
+    }
   ],
   iceCandidatePoolSize: 10,
+  
 };
 
 /**
