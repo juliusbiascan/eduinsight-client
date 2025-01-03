@@ -545,6 +545,23 @@ export const TeacherConsole = () => {
         initiator: true,
         trickle: false,
         stream,
+        config: {
+          iceServers: [
+            {
+              urls: [
+                'stun:192.168.1.82:3478',
+                'turn:192.168.1.82:3478',
+                'turn:192.168.1.82:3478?transport=tcp'
+              ],
+              username: 'webrtc',
+              credential: 'webrtc123',
+            }
+          ],
+          iceTransportPolicy: 'all' as RTCIceTransportPolicy,
+          bundlePolicy: 'max-bundle' as RTCBundlePolicy,
+          rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
+          iceCandidatePoolSize: 5
+        },
       });
 
       peerRef.current = peer;

@@ -87,7 +87,6 @@ export const StudentConsole = () => {
   const [screenSharing, setScreenSharing] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const peerRef = useRef<Peer.Instance | null>(null);
 
   useEffect(() => {
     api.database.getDevice().then((device: Device) => {
@@ -140,10 +139,25 @@ export const StudentConsole = () => {
 
     const peer = new Peer({
       initiator: false,
-			trickle: false,
+      trickle: false,
+      config: {
+        iceServers: [
+          {
+            urls: [
+              'stun:192.168.1.82:3478',
+              'turn:192.168.1.82:3478',
+              'turn:192.168.1.82:3478?transport=tcp',
+            ],
+            username: 'webrtc',
+            credential: 'webrtc123',
+          },
+        ],
+        iceTransportPolicy: 'all' as RTCIceTransportPolicy,
+        bundlePolicy: 'max-bundle' as RTCBundlePolicy,
+        rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
+        iceCandidatePoolSize: 5,
+      },
     });
-
-    peerRef.current = peer;
 
     const handleScreenShareOffer = ({
       senderId,
@@ -160,7 +174,7 @@ export const StudentConsole = () => {
     peer.on('signal', (data) => {
       socket.emit('screen-share-offer', {
         senderId: user.id,
-        receiverId: selectedSubject.id,
+        receiverId: selectedSubject?.id || '',
         signalData: data,
       });
     });
@@ -168,16 +182,13 @@ export const StudentConsole = () => {
     peer.on('stream', (stream: MediaStream) => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.requestFullscreen();
       }
       setScreenSharing(true);
     });
 
     const handleScreenShareStopped = () => {
-      console.log('Screen share stopped');
       if (videoRef.current) {
         videoRef.current.srcObject = null;
-        document.exitFullscreen();
       }
       setScreenSharing(false);
     };
@@ -187,7 +198,6 @@ export const StudentConsole = () => {
 
     return () => {
       peer.destroy();
-      peerRef.current = null;
       socket.off('screen-share-offer', handleScreenShareOffer);
       socket.off('screen-share-stopped', handleScreenShareStopped);
     };
