@@ -143,17 +143,12 @@ export const StudentConsole = () => {
       config: {
         iceServers: [
           {
-            urls: 'stun:192.168.1.82:3478',
-            username: 'username',
-            credential: 'password',
-          },
-          {
             urls: 'turn:192.168.1.82:3478',
             username: 'username',
             credential: 'password',
           },
         ],
-        iceTransportPolicy: 'all' as RTCIceTransportPolicy,
+        iceTransportPolicy: 'all',
       },
     });
 
