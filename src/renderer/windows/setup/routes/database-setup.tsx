@@ -25,7 +25,7 @@ const DatabaseSetup: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const form = useForm<DatabaseFormData>({
     defaultValues: {
-      hostname: '192.168.102.145',
+      hostname: '192.168.1.142',
       port: '3306',
       username: 'eduinsight_user',
       password: 'eduinsight_pass',

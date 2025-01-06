@@ -1,7 +1,3 @@
-export enum API {
-  URL = '192.168.1.82',
-}
-
 /**
  * Browser Window unique identifier names.
  *

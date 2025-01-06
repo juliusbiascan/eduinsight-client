@@ -12,7 +12,7 @@ interface SocketContextType {
 const SocketContext = createContext<SocketContextType | null>(null);
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const [socketUrl, setSocketUrl] = useState<string>("https://192.168.1.82:4000");
+  const [socketUrl, setSocketUrl] = useState<string>("https://192.168.1.142:4000");
   const [socketState, setSocketState] = useState<SocketContextType>({
     socket: null,
     isConnected: false,

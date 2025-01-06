@@ -143,9 +143,12 @@ export const StudentConsole = () => {
       config: {
         iceServers: [
           {
-            urls: 'turn:192.168.1.82:3478',
-            username: 'username',
-            credential: 'password',
+            urls: 'stun:192.168.1.142:3478',
+          },
+          {
+            urls: 'turn:192.168.1.142:3478',
+            username: 'eduinsight',
+            credential: 'jlzk21dev',
           },
         ],
         iceTransportPolicy: 'all',
@@ -619,6 +622,16 @@ export const StudentConsole = () => {
           )}
 
           <main className="px-4 sm:px-6 lg:px-8 py-4 relative h-[calc(100vh-8rem)] overflow-y-auto">
+            
+            {screenSharing && (
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full rounded-lg"
+              />
+            )}
+
             {subjects.length === 0 ? (
               // No subjects state
               <div className="h-full flex items-center justify-center">
@@ -813,16 +826,6 @@ export const StudentConsole = () => {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            <div className="relative">
-              {screenSharing && (
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  className="w-full h-full rounded-lg"
-                />
-              )}
-            </div>
           </main>
         </div>
       </div>

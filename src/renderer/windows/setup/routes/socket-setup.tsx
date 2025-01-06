@@ -22,7 +22,7 @@ const SocketSetup: React.FC = () => {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      socketUrl: "https://192.168.102.145:4000",
+      socketUrl: "https://192.168.1.142:4000",
     },
   });
 

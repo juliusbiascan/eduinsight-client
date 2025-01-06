@@ -528,7 +528,7 @@ export const TeacherConsole = () => {
   const handleStartScreenShare = async () => {
     try {
       const sourceId = await api.screen.getScreenSourceId();
-      const stream = await (navigator.mediaDevices as any).getUserMedia({
+      const stream = await (navigator.mediaDevices as any).getUserMedia({   
         audio: false,
         video: {
           mandatory: {
@@ -544,13 +544,16 @@ export const TeacherConsole = () => {
       const peer = new Peer({
         initiator: true,
         trickle: true,
-        stream,
+        stream, 
         config: {
           iceServers: [
             {
-              urls: 'turn:192.168.1.82:3478',
-              username: 'username',
-              credential: 'password',
+              urls: 'stun:192.168.1.142:3478',
+            },
+            {
+              urls: 'turn:192.168.1.142:3478',
+              username: 'eduinsight',
+              credential: 'jlzk21dev',
             },
           ],
           iceTransportPolicy: 'all',
