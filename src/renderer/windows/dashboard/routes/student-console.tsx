@@ -780,15 +780,6 @@ export const StudentConsole = () => {
                                   Start Quiz
                                 </Button>
                               )}
-                              {isQuizDone && (
-                                <Button
-                                  variant="outline"
-                                  className="w-full"
-                                  onClick={() => handleStartQuiz(quiz.id)}
-                                >
-                                  Review Quiz
-                                </Button>
-                              )}
                             </div>
                           </div>
                         </div>

@@ -18,9 +18,8 @@ import { Socket } from 'socket.io-client';
 import { sleep } from '@/shared/utils';
 import { startMonitoring } from './lib/monitoring';
 import { createTray } from './lib/tray-menu';
-import fs, { writeFile } from 'fs';
+import fs from 'fs';
 import path from 'path';
-//import { createCanvas, loadImage } from 'canvas';
 
 const store = StoreManager.getInstance();
 const deviceId = store.get('deviceId') as string;
@@ -37,8 +36,6 @@ function setupSocketEventListeners(socket: Socket) {
     userId: store.get('userId'),
   });
   let captureInterval: NodeJS.Timeout | null = null;
-  const fileChunks: Record<string, { chunks: string[]; totalChunks: number }> =
-    {};
 
   socket.on('start-live-quiz', ({ quizId }) => {
     const quiz = WindowManager.get(WindowIdentifier.QuizPlayer);
@@ -53,31 +50,53 @@ function setupSocketEventListeners(socket: Socket) {
 
   socket.on(
     'upload-file-chunk',
-    ({ chunk, filename, subjectName, chunkIndex, totalChunks }) => {
-      if (!fileChunks[filename]) {
-        fileChunks[filename] = { chunks: [], totalChunks };
-      }
-      fileChunks[filename].chunks[chunkIndex] = chunk;
-
-      if (fileChunks[filename].chunks.filter(Boolean).length === totalChunks) {
-        const fileContent = fileChunks[filename].chunks.join('');
-        const buffer = Buffer.from(fileContent, 'base64');
-        const subjectFolderPath = path.join(
+    ({ fileId, file, filename, subjectName, fileType }) => {
+      try {
+        const downloadPath = path.join(
           app.getPath('downloads'),
-          subjectName,
+          'EduInsight',
+          subjectName
         );
-        if (!fs.existsSync(subjectFolderPath)) {
-          fs.mkdirSync(subjectFolderPath);
+        
+        if (!fs.existsSync(downloadPath)) {
+          fs.mkdirSync(downloadPath, { recursive: true });
         }
-        writeFile(path.join(subjectFolderPath, filename), buffer, (err) => {
-          if (err) {
-            console.error('Failed to save file:', err);
-          }
+
+        const filePath = path.join(downloadPath, filename);
+        fs.writeFileSync(filePath, file);
+
+        // Notify success
+        BrowserWindow.getAllWindows().forEach(window => {
+          window.webContents.send('file-received', {
+            fileId,
+            filename,
+            path: filePath,
+            subjectName,
+            fileType
+          });
         });
-        delete fileChunks[filename];
+      } catch (error) {
+        console.error('Failed to save file:', error);
+        BrowserWindow.getAllWindows().forEach(window => {
+          window.webContents.send('file-receive-error', {
+            fileId,
+            filename,
+            error: error.message
+          });
+        });
       }
-    },
+    }
   );
+
+  socket.on('file-progress', ({ fileId, filename, progress }) => {
+    BrowserWindow.getAllWindows().forEach(window => {
+      window.webContents.send('file-progress', {
+        fileId,
+        filename,
+        progress
+      });
+    });
+  });
 
   socket.on('show-screen', ({ _deviceId, userId, subjectId }) => {
     if (captureInterval) clearInterval(captureInterval);

@@ -1,5 +1,5 @@
 import logo from '@/renderer/assets/passlogo-small.png';
-
+import { Checkbox } from "@/renderer/components/ui/checkbox";
 import { Button } from '@/renderer/components/ui/button';
 import { Toaster } from '@/renderer/components/ui/toaster';
 import { useToast } from '@/renderer/hooks/use-toast';
@@ -149,6 +149,7 @@ export const TeacherConsole = () => {
     useState<Array<Quiz & { questions: Array<QuizQuestion> }>>();
   const [isShareScreenDialogOpen, setIsShareScreenDialogOpen] = useState(false);
   const [isShowScreensDialogOpen, setIsShowScreensDialogOpen] = useState(false);
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
 
   const handleStartLiveQuiz = () => {
     for (const user of activeUsers) {
@@ -422,47 +423,161 @@ export const TeacherConsole = () => {
     }
   };
 
-  const CHUNK_SIZE = 1024 * 1024; // 1MB
+  const CHUNK_SIZE = 512 * 1024; // 512KB chunks
+  const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB limit
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  // Add new helper function for chunked array buffer processing
+  const createChunkedArray = (arrayBuffer: ArrayBuffer): string[] => {
+    const chunks: string[] = [];
+    const totalChunks = Math.ceil(arrayBuffer.byteLength / CHUNK_SIZE);
+    
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, arrayBuffer.byteLength);
+      const chunk = arrayBuffer.slice(start, end);
+      const base64Chunk = btoa(
+        String.fromCharCode(...new Uint8Array(chunk))
+      );
+      chunks.push(base64Chunk);
+    }
+    
+    return chunks;
+  };
 
-    if (file && selectedSubject) {
+  // Update the processFileInChunks function
+  const processFileInChunks = async (
+    file: File,
+    subjectName: string,
+    targetDevices: string[],
+    socket: any,
+    onProgress: (progress: number) => void
+  ): Promise<void> => {
+    if (file.size > MAX_FILE_SIZE) {
+      throw new Error(`File size exceeds maximum limit of ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
+    }
+
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const progress = (e.loaded / e.total) * 100;
-          setFileProgress(progress);
-        }
-      };
-      reader.onload = () => {
-        const content = reader.result as ArrayBuffer;
-        const totalChunks = Math.ceil(content.byteLength / CHUNK_SIZE);
-        for (let i = 0; i < totalChunks; i++) {
-          const chunk = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-          const base64Chunk = btoa(
-            String.fromCharCode(...new Uint8Array(chunk)),
-          );
-          for (const user of activeUsers) {
-            socket.emit('upload-file-chunk', {
-              deviceId: user.deviceId,
-              chunk: base64Chunk,
-              filename: file.name,
-              subjectName: selectedSubject.name,
-              chunkIndex: i,
-              totalChunks,
+      
+      reader.onload = async () => {
+        try {
+          const arrayBuffer = reader.result as ArrayBuffer;
+          const chunks = createChunkedArray(arrayBuffer);
+          const totalChunks = chunks.length;
+          
+          for (let i = 0; i < totalChunks; i++) {
+            await new Promise<void>((chunkResolve) => {
+              setTimeout(() => {
+                socket.emit('upload-file-chunk', {
+                  targets: targetDevices,
+                  chunk: chunks[i],
+                  filename: file.name,
+                  subjectName,
+                  chunkIndex: i,
+                  totalChunks,
+                  fileType: file.type,
+                  fileSize: file.size
+                });
+                onProgress((i + 1) / totalChunks * 100);
+                chunkResolve();
+              }, 50); // 50ms delay between chunks
             });
           }
+          resolve();
+        } catch (error) {
+          reject(error);
         }
-        toast({
-          title: 'File Shared',
-          description: 'The file has been shared with student devices.',
-        });
-        setFileProgress(0);
       };
+
+      reader.onerror = () => reject(reader.error);
       reader.readAsArrayBuffer(file);
+    });
+  };
+
+  // Update handleFileChange
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedSubject) return;
+
+    try {
+      if (file.size > MAX_FILE_SIZE) {
+        toast({
+          title: 'Error',
+          description: `File size must be less than ${MAX_FILE_SIZE / (1024 * 1024)}MB`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const targetDevices = selectedStudents.length > 0 
+        ? activeUsers.filter(user => selectedStudents.includes(user.userId)).map(user => user.deviceId)
+        : activeUsers.map(user => user.deviceId);
+
+      toast({
+        title: 'File Transfer Started',
+        description: `Starting transfer of "${file.name}"`,
+      });
+
+      await processFileInChunks(
+        file,
+        selectedSubject.name,
+        targetDevices,
+        socket,
+        (progress) => setFileProgress(progress)
+      );
+
+    } catch (error) {
+      console.error('Error processing file:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to process file',
+        variant: 'destructive',
+      });
+      setFileProgress(0);
+    } finally {
+      if (event.target) {
+        event.target.value = '';
+      }
     }
   };
+
+  // Add socket event listeners for file transfer updates
+  useEffect(() => {
+    if (socket) {
+      socket.on('file-progress', ({ filename, progress }) => {
+        toast({
+          title: 'File Transfer Progress',
+          description: `${filename}: ${progress}%`,
+          variant: 'default',
+        });
+      });
+
+      socket.on('file-complete', ({ filename, targetCount }) => {
+        toast({
+          title: 'File Transfer Complete',
+          description: `Successfully shared "${filename}" with ${targetCount} student${targetCount !== 1 ? 's' : ''}`,
+          variant: 'default',
+        });
+        setFileProgress(0);
+        setSelectedStudents([]);
+      });
+
+      socket.on('file-error', ({ error, filename }) => {
+        toast({
+          title: 'File Transfer Failed',
+          description: `Error sharing "${filename}": ${error}`,
+          variant: 'destructive',
+        });
+        setFileProgress(0);
+      });
+
+      return () => {
+        socket.off('file-progress');
+        socket.off('file-complete');
+        socket.off('file-error');
+      };
+    }
+  }, [socket]);
 
   const handleShareFile = () => {
     if (fileInputRef.current) {
@@ -479,7 +594,7 @@ export const TeacherConsole = () => {
         <div
           key={userId}
           className={`flex flex-col p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer`}
-        >
+        > 
           {/* Student Header */}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center space-x-2">
@@ -707,6 +822,14 @@ export const TeacherConsole = () => {
   const handleConfirmShowScreens = () => {
     setIsShowScreensDialogOpen(false);
     setShowScreens(true);
+  };
+
+  const toggleStudentSelection = (userId: string) => {
+    setSelectedStudents(prev => 
+      prev.includes(userId) 
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
   };
 
   return (
@@ -1016,6 +1139,11 @@ export const TeacherConsole = () => {
                       <DropdownMenuItem onClick={handleShareFile}>
                         <FileUp className="h-4 w-4 mr-2" />
                         Share Files
+                        {selectedStudents.length > 0 && (
+                          <Badge variant="outline" className="ml-2">
+                            {selectedStudents.length} selected
+                          </Badge>
+                        )}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -1349,6 +1477,10 @@ export const TeacherConsole = () => {
                                   className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
                                 >
                                   <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      checked={selectedStudents.includes(record.userId)}
+                                      onCheckedChange={() => toggleStudentSelection(record.userId)}
+                                    />
                                     <Avatar className="h-6 w-6">
                                       <AvatarFallback className="text-xs">
                                         {student?.firstName?.[0] || ''}
