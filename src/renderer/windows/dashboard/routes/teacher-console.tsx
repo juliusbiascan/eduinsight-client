@@ -12,6 +12,7 @@ import {
   QuizQuestion,
   Subject,
   SubjectRecord,
+  DeviceUserRole,
 } from '@prisma/client';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { WindowIdentifier } from '@/shared/constants';
@@ -93,7 +94,8 @@ import { WebpageModal } from '../../../components/modals/webpage-modal';
 import { BeginQuizModal } from '../../../components/modals/begin-quiz-modal';
 import { ShareScreenModal } from '../../../components/modals/share-screen-modal';
 import { ShowScreensModal } from '../../../components/modals/show-screen-modal';
-import Peer from 'simple-peer';
+//import Peer from 'simple-peer';
+
 
 interface StudentInfo {
   id: string;
@@ -118,8 +120,8 @@ export const TeacherConsole = () => {
       ActiveUserLogs: ActiveUserLogs[];
     }
   >();
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const peerRef = useRef<Peer.Instance | null>(null);
+  //const localStreamRef = useRef<MediaStream | null>(null);
+  //const peerRef = useRef<Peer.Instance | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [newSubjectName, setNewSubjectName] = useState<string>('');
@@ -150,6 +152,26 @@ export const TeacherConsole = () => {
   const [isShareScreenDialogOpen, setIsShareScreenDialogOpen] = useState(false);
   const [isShowScreensDialogOpen, setIsShowScreensDialogOpen] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+
+  useEffect(() => {
+    const validateAccess = async () => {
+      try {
+        const device = await api.database.getDevice();
+        const activeUser = await api.database.getActiveUserByDeviceId(device.id, device.labId);
+        
+        if (!activeUser || activeUser.user.role !== DeviceUserRole.TEACHER) {
+          navigate('/');
+          window.close();
+        }
+      } catch (error) {
+        console.error('Access validation error:', error);
+        navigate('/');
+        window.close();
+      }
+    };
+
+    validateAccess();
+  }, [navigate]);
 
   const handleStartLiveQuiz = () => {
     for (const user of activeUsers) {
@@ -332,9 +354,7 @@ export const TeacherConsole = () => {
     );
     setSubjectRecords(subjectRecords);
 
-    const activeUsers = await api.database.getActiveUsersBySubjectId(
-      selectedSubject.id,
-    );
+    const activeUsers = await api.database.getActiveUsersBySubjectId( selectedSubject.id,);
     setActiveUsers(activeUsers);
 
     // Fetch student info for all records
@@ -641,100 +661,100 @@ export const TeacherConsole = () => {
   );
 
   const handleStartScreenShare = async () => {
-    try {
-      const sourceId = await api.screen.getScreenSourceId();
-      const stream = await (navigator.mediaDevices as any).getUserMedia({   
-        audio: false,
-        video: {
-          mandatory: {
-            chromeMediaSource: 'desktop',
-            chromeMediaSourceId: sourceId,
-          },
-        },
-      });
+    // try {
+    //   const sourceId = await api.screen.getScreenSourceId();
+    //   const stream = await (navigator.mediaDevices as any).getUserMedia({   
+    //     audio: false,
+    //     video: {
+    //       mandatory: {
+    //         chromeMediaSource: 'desktop',
+    //         chromeMediaSourceId: sourceId,
+    //       },
+    //     },
+    //   });
 
-      localStreamRef.current = stream;
-      setIsScreenSharing(true);
+    //   localStreamRef.current = stream;
+    //   setIsScreenSharing(true);
 
-      const peer = new Peer({
-        initiator: true,
-        trickle: true,
-        stream, 
-        config: {
-          iceServers: [
-            {
-              urls: 'stun:192.168.1.142:3478',
-            },
-            {
-              urls: 'turn:192.168.1.142:3478',
-              username: 'eduinsight',
-              credential: 'jlzk21dev',
-            },
-          ],
-          iceTransportPolicy: 'all',
-        },
-      });
+    //   const peer = new Peer({
+    //     initiator: true,
+    //     trickle: true,
+    //     stream, 
+    //     config: {
+    //       iceServers: [
+    //         {
+    //           urls: 'stun:192.168.1.142:3478',
+    //         },
+    //         {
+    //           urls: 'turn:192.168.1.142:3478',
+    //           username: 'eduinsight',
+    //           credential: 'jlzk21dev',
+    //         },
+    //       ],
+    //       iceTransportPolicy: 'all',
+    //     },
+    //   });
 
-      peerRef.current = peer;
+    //   peerRef.current = peer;
 
-      peer.on('signal', (data) => {
-        activeUsers.forEach((activeUser) => {
-          socket.emit('screen-share-offer', {
-            senderId: user.id,
-            receiverId: activeUser.userId,
-            signalData: data,
-          });
-        });
-      });
-    } catch (error) {
-      console.error('Error starting screen share:', error);
-      setIsScreenSharing(false);
-      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    //   peer.on('signal', (data) => {
+    //     activeUsers.forEach((activeUser) => {
+    //       socket.emit('screen-share-offer', {
+    //         senderId: user.id,
+    //         receiverId: activeUser.userId,
+    //         signalData: data,
+    //       });
+    //     });
+    //   });
+    // } catch (error) {
+    //   console.error('Error starting screen share:', error);
+    //   setIsScreenSharing(false);
+    //   localStreamRef.current?.getTracks().forEach((track) => track.stop());
 
-      toast({
-        title: 'Error',
-        description: 'Failed to start screen sharing',
-        variant: 'destructive',
-      });
-    }
+    //   toast({
+    //     title: 'Error',
+    //     description: 'Failed to start screen sharing',
+    //     variant: 'destructive',
+    //   });
+    // }
   };
 
   const handleStopScreenShare = () => {
-    try {
-      // Stop all tracks in the local stream
-      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    // try {
+    //   // Stop all tracks in the local stream
+    //   localStreamRef.current?.getTracks().forEach((track) => track.stop());
 
-      setIsScreenSharing(false);
+    //   setIsScreenSharing(false);
 
-      // Notify students that screen sharing has stopped
-      activeUsers.forEach((activeUser) => {
-        socket.emit('screen-share-stopped', {
-          senderId: user.id,
-          receiverId: activeUser.userId,
-        });
-      });
+    //   // Notify students that screen sharing has stopped
+    //   activeUsers.forEach((activeUser) => {
+    //     socket.emit('screen-share-stopped', {
+    //       senderId: user.id,
+    //       receiverId: activeUser.userId,
+    //     });
+    //   });
 
-      // Destroy the peer connection
-      peerRef.current?.destroy();
-      peerRef.current = null;
-    } catch (error) {
-      console.error('Error stopping screen share:', error);
-    }
+    //   // Destroy the peer connection
+    //   peerRef.current?.destroy();
+    //   peerRef.current = null;
+    // } catch (error) {
+    //   console.error('Error stopping screen share:', error);
+    // }
   };
 
   useEffect(() => {
     if (socket && isConnected && selectedSubject) {
-      const handleScreenShareOffer = ({
-        senderId,
-        signalData,
-      }: {
-        senderId: string;
-        receiverId: string;
-        signalData: Peer.SignalData;
-      }) => {
-        console.log('Received screen share offer:', senderId);
-        peerRef.current.signal(signalData);
-      };
+      // const handleScreenShareOffer = ({
+      //   senderId,
+      //   signalData,
+      // }: {
+      //   senderId: string;
+      //   receiverId: string;
+      //   signalData: Peer.SignalData;
+      // }) => {
+      //   console.log('Received screen share offer:', senderId);
+      //   peerRef.current.signal(signalData);
+      // };
 
       socket.emit('join-server', selectedSubject.id);
 
@@ -772,7 +792,7 @@ export const TeacherConsole = () => {
         handleScreenUpdate(userId, screenData);
       });
 
-      socket.on('screen-share-offer', handleScreenShareOffer);
+      //socket.on('screen-share-offer', handleScreenShareOffer);
 
       return () => {
         socket.off('screen-share-offer');
@@ -1586,8 +1606,6 @@ export const TeacherConsole = () => {
               selectedQuiz={selectedQuiz}
               setSelectedQuiz={setSelectedQuiz}
               handleStartLiveQuiz={handleStartLiveQuiz}
-              navigate={navigate}
-              selectedSubject={selectedSubject}
             />
             <ShareScreenModal
               isOpen={isShareScreenDialogOpen}

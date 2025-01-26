@@ -1,20 +1,18 @@
 import logo from '@/renderer/assets/passlogo-small.png';
-import { Device, DeviceUser, Quiz, QuizRecord, Subject } from '@prisma/client';
+import { Device, DeviceUser, Quiz, QuizRecord, Subject, DeviceUserRole } from '@prisma/client';
 import { useToast } from '../../../hooks/use-toast';
 import {
   LogOut,
   RefreshCw,
   Book,
   PlusCircle,
-  Clock,
   Minimize2,
   Folders,
-  Menu,
   Settings2Icon,
   Trash2Icon,
 } from 'lucide-react';
 import { Toaster } from '../../../components/ui/toaster';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import {
@@ -30,17 +28,7 @@ import { Avatar, AvatarFallback } from '@/renderer/components/ui/avatar';
 import { Badge } from '../../../components/ui/badge';
 import { Label } from '@/renderer/components/ui/label';
 import { WindowIdentifier } from '@/shared/constants';
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarProvider,
-  SidebarTrigger,
-} from '@/renderer/components/ui/sidebar';
-import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+
 
 import {
   DropdownMenu,
@@ -60,10 +48,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/renderer/components/ui/alert-dialog';
-import Peer from 'simple-peer';
+//import Peer from 'simple-peer';
+import { useNavigate } from 'react-router-dom';
 
 export const StudentConsole = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { socket, isConnected } = useSocket();
   const [user, setUser] = useState<DeviceUser>();
   const [subjectCode, setSubjectCode] = useState('');
@@ -84,9 +74,30 @@ export const StudentConsole = () => {
   const [isLeavingSubject, setIsLeavingSubject] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
-  const [screenSharing, setScreenSharing] = useState(false);
+  //const [screenSharing, setScreenSharing] = useState(false);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
+  //const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const validateAccess = async () => {
+      try {
+        const device = await api.database.getDevice();
+        const activeUser = await api.database.getActiveUserByDeviceId(device.id, device.labId);
+        
+        if (!activeUser || activeUser.user.role !== DeviceUserRole.STUDENT) {
+          navigate('/');
+         
+          window.close();
+        }
+      } catch (error) {
+        console.error('Access validation error:', error);
+        navigate('/');
+        window.close();
+      }
+    };
+
+    validateAccess();
+  }, [navigate]);
 
   useEffect(() => {
     api.database.getDevice().then((device: Device) => {
@@ -107,109 +118,41 @@ export const StudentConsole = () => {
   }, []);
 
   const handleLogout = () => {
-    if (user) {
-      api.database.userLogout(user.id);
-      api.window.open(WindowIdentifier.Main);
-      toast({
-        title: 'Logged Out',
-        description: 'You have been successfully logged out.',
-      });
+    if (!user || !socket || !isConnected) return;
 
+    try {
+      api.database.userLogout(user.id);
       if (selectedSubject) {
         socket.emit('logout-user', {
           userId: user.id,
           subjectId: selectedSubject.id,
         });
       }
+      api.window.open(WindowIdentifier.Main);
+      window.close();
+      toast({
+        title: 'Logged Out',
+        description: 'You have been successfully logged out.',
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
     }
   };
 
-  useEffect(() => {
-    if (!user || !socket || !isConnected) {
-      return;
-    }
-
-    socket.emit('join-server', user.id);
-
-    fetchSubjects();
-  }, [user, socket, isConnected]);
-
-  useEffect(() => {
-    if (!socket || !isConnected || !user) return;
-
-    const peer = new Peer({
-      initiator: false,
-      trickle: false,
-      config: {
-        iceServers: [
-          {
-            urls: 'stun:192.168.1.142:3478',
-          },
-          {
-            urls: 'turn:192.168.1.142:3478',
-            username: 'eduinsight',
-            credential: 'jlzk21dev',
-          },
-        ],
-        iceTransportPolicy: 'all',
-      },
-    });
-
-    const handleScreenShareOffer = ({
-      senderId,
-      signalData,
-    }: {
-      senderId: string;
-      receiverId: string;
-      signalData: Peer.SignalData;
-    }) => {
-      console.log('Received screen share offer:', senderId);
-      peer.signal(signalData);
-    };
-
-    peer.on('signal', (data) => {
-      socket.emit('screen-share-offer', {
-        senderId: user.id,
-        receiverId: selectedSubject?.id || '',
-        signalData: data,
-      });
-    });
-
-    peer.on('stream', (stream: MediaStream) => {
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      setScreenSharing(true);
-    });
-
-    const handleScreenShareStopped = () => {
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
-      setScreenSharing(false);
-    };
-
-    socket.on('screen-share-offer', handleScreenShareOffer);
-    socket.on('screen-share-stopped', handleScreenShareStopped);
-
-    return () => {
-      peer.destroy();
-      socket.off('screen-share-offer', handleScreenShareOffer);
-      socket.off('screen-share-stopped', handleScreenShareStopped);
-    };
-  }, [socket, isConnected, user]);
-
   const fetchSubjects = useCallback(async () => {
-    if (!user) return;
+    if (!user || !socket || !isConnected) return;
     try {
       const data = await api.database.getStudentSubjects(user.id);
       if (data.length > 0) {
         setSubjects(data);
         setSelectedSubject(data[0]);
-        socket.emit('join-subject', {
-          userId: user.id,
-          subjectId: data[0].id,
-        });
+        // Only emit if socket is connected
+        if (socket && isConnected) {
+          socket.emit('join-subject', {
+            userId: user.id,
+            subjectId: data[0].id,
+          });
+        }
       } else {
         setSubjects([]);
         setSelectedSubject(null);
@@ -222,7 +165,95 @@ export const StudentConsole = () => {
         variant: 'destructive',
       });
     }
-  }, [user]);
+  }, [user, socket, isConnected]); // Add socket and isConnected to dependencies
+
+  useEffect(() => {
+    let mounted = true;
+
+    const initializeSocket = async () => {
+      if (!user || !socket || !isConnected) return;
+
+      try {
+        if (mounted) {
+          socket.emit('join-server', user.id);
+          await fetchSubjects();
+        }
+      } catch (error) {
+        console.error('Socket initialization error:', error);
+      }
+    };
+
+    initializeSocket();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user, socket, isConnected, fetchSubjects]);
+
+  // useEffect(() => {
+  //   if (!socket || !isConnected || !user) return;
+
+  //   const peer = new Peer({
+  //     initiator: false,
+  //     trickle: false,
+  //     config: {
+  //       iceServers: [
+  //         {
+  //           urls: 'stun:192.168.1.142:3478',
+  //         },
+  //         {
+  //           urls: 'turn:192.168.1.142:3478',
+  //           username: 'eduinsight',
+  //           credential: 'jlzk21dev',
+  //         },
+  //       ],
+  //       iceTransportPolicy: 'all',
+  //     },
+  //   });
+
+  //   const handleScreenShareOffer = ({
+  //     senderId,
+  //     signalData,
+  //   }: {
+  //     senderId: string;
+  //     receiverId: string;
+  //     signalData: Peer.SignalData;
+  //   }) => {
+  //     console.log('Received screen share offer:', senderId);
+  //     peer.signal(signalData);
+  //   };
+
+  //   peer.on('signal', (data) => {
+  //     socket.emit('screen-share-offer', {
+  //       senderId: user.id,
+  //       receiverId: selectedSubject?.id || '',
+  //       signalData: data,
+  //     });
+  //   });
+
+  //   peer.on('stream', (stream: MediaStream) => {
+  //     if (videoRef.current) {
+  //       videoRef.current.srcObject = stream;
+  //     }
+  //     setScreenSharing(true);
+  //   });
+
+  //   const handleScreenShareStopped = () => {
+  //     if (videoRef.current) {
+  //       videoRef.current.srcObject = null;
+  //     }
+  //     setScreenSharing(false);
+  //   };
+
+  //   socket.on('screen-share-offer', handleScreenShareOffer);
+  //   socket.on('screen-share-stopped', handleScreenShareStopped);
+
+  //   return () => {
+  //     peer.destroy();
+  //     socket.off('screen-share-offer', handleScreenShareOffer);
+  //     socket.off('screen-share-stopped', handleScreenShareStopped);
+  //   };
+  // }, [socket, isConnected, user]);
 
   const handleJoinSubject = async () => {
     if (!subjectCode.trim()) {
@@ -233,6 +264,16 @@ export const StudentConsole = () => {
       });
       return;
     }
+
+    if (!socket || !isConnected) {
+      toast({
+        title: 'Error',
+        description: 'Not connected to server',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsJoining(true);
     try {
       const existingSubjects = await api.database.getStudentSubjects(user.id);
@@ -286,12 +327,17 @@ export const StudentConsole = () => {
   };
 
   const handleSubjectChange = (value: string) => {
+    if (!socket || !isConnected || !user) return;
+
     const subject = subjects.find((s) => s.id.toString() === value);
     setSelectedSubject(subject || null);
-    socket.emit('join-subject', {
-      userId: user.id,
-      subjectId: subject.id,
-    });
+    
+    if (subject) {
+      socket.emit('join-subject', {
+        userId: user.id,
+        subjectId: subject.id,
+      });
+    }
   };
 
   const calculateProgress = () => {
@@ -373,453 +419,399 @@ export const StudentConsole = () => {
   const handleMinimizeWindow = () => {
     api.window.hide(WindowIdentifier.Dashboard);
   };
-
   return (
-    <SidebarProvider>
-      <div className="min-h-screen w-screen bg-[#EAEAEB] flex">
-        <Sidebar className="border-r bg-white w-64">
-          <SidebarHeader>
-            <div className="flex items-center space-x-2 px-4 py-4">
-              <Book className="h-5 w-5 text-[#C9121F]" />
-              <h2 className="text-lg font-semibold">Student Dashboard</h2>
+    <div className="min-h-screen bg-[#F5F5F7]">
+      {/* Simplified Header */}
+      <header className="bg-white border-b sticky top-0 z-50">
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-4">
+              <img src={logo} alt="PASS College Logo" className="h-8 w-auto" />
+              <div>
+                <h1 className="text-xl font-semibold text-gray-900">EduInsight</h1>
+                <p className="text-sm text-gray-500">Student Console</p>
+              </div>
             </div>
-          </SidebarHeader>
-          <SidebarContent>
-            {/* Subjects Section */}
-            <div className="px-3 py-2">
-              <h3 className="text-sm font-medium text-gray-500 px-2 mb-2">
-                My Subjects
-              </h3>
-              <SidebarMenu>
-                {subjects.map((subject) => (
-                  <SidebarMenuItem key={subject.id}>
-                    <SidebarMenuButton
-                      isActive={selectedSubject?.id === subject.id}
-                      onClick={() => handleSubjectChange(subject.id.toString())}
-                      className="w-full flex items-center"
-                    >
-                      <Folders className="h-4 w-4 mr-2" />
-                      <span className="truncate">{subject.name}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => setIsJoinDialogOpen(true)}
-                    className="text-muted-foreground hover:bg-gray-100 w-full"
-                  >
-                    <PlusCircle className="h-4 w-4 mr-2" />
-                    <span>Join Subject</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </div>
-          </SidebarContent>
-        </Sidebar>
 
-        <div className="flex-1">
-          <header className="bg-[#C9121F] border-b shadow-lg sticky top-0 z-50">
-            <div className="px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between items-center h-16">
-                <div className="flex items-center space-x-4">
-                  <SidebarTrigger className="text-white hover:bg-[#EBC42E]/20">
-                    <Menu className="h-5 w-5" />
-                  </SidebarTrigger>
-                  <img
-                    src={logo}
-                    alt="PASS College Logo"
-                    className="h-10 w-auto"
-                  />
-                  <div>
-                    <h1 className="text-xl font-semibold text-white">
-                      EduInsight
-                    </h1>
-                    <p className="text-sm text-[#EBC42E]">Student Console</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleMinimizeWindow}
-                    className="text-white hover:bg-[#EBC42E]/20"
-                  >
-                    <Minimize2 className="h-4 w-4" />
+            <div className="flex items-center space-x-4">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleMinimizeWindow}
+                className="text-gray-600 hover:text-gray-900"
+              >
+                <Minimize2 className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleRefresh}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              
+              <Dialog open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" className="flex items-center space-x-2">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback>{user?.firstName[0]}{user?.lastName[0]}</AvatarFallback>
+                    </Avatar>
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleRefresh}
-                    className="text-white hover:bg-[#EBC42E]/20"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[425px]">
+                  <DialogHeader>
+                    <DialogTitle className="text-2xl font-bold text-[#C9121F]">
+                      Student Profile
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="pt-4">
+                    <div className="flex items-center justify-center mb-6">
+                      <Avatar className="h-24 w-24">
+                        <AvatarFallback className="text-3xl">
+                          {user?.firstName[0]}
+                          {user?.lastName[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
 
-                  <Dialog
-                    open={isProfileDialogOpen}
-                    onOpenChange={setIsProfileDialogOpen}
-                  >
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="flex items-center space-x-2"
-                      >
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback>
-                            {user?.firstName[0]}
-                            {user?.lastName[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="hidden md:inline text-white">
-                          {user?.firstName} {user?.lastName}
-                        </span>
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[425px]">
-                      <DialogHeader>
-                        <DialogTitle className="text-2xl font-bold text-[#C9121F]">
-                          Student Profile
-                        </DialogTitle>
-                      </DialogHeader>
-                      <div className="pt-4">
-                        <div className="flex items-center justify-center mb-6">
-                          <Avatar className="h-24 w-24">
-                            <AvatarFallback className="text-2xl">
-                              {user?.firstName[0]}
-                              {user?.lastName[0]}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                        <div className="space-y-4">
-                          <div className="bg-gray-50 p-4 rounded-lg">
-                            <h3 className="text-sm font-medium text-gray-500 mb-2">
-                              Personal Information
-                            </h3>
-                            <div className="space-y-2">
-                              <div className="flex justify-between">
-                                <span className="text-sm text-gray-600">
-                                  Full Name:
-                                </span>
-                                <span className="text-sm font-medium">
-                                  {user?.firstName} {user?.lastName}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-sm text-gray-600">
-                                  Student ID:
-                                </span>
-                                <span className="text-sm font-medium">
-                                  {user?.schoolId}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-sm text-gray-600">
-                                  Course:
-                                </span>
-                                <span className="text-sm font-medium">
-                                  {user?.course}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-sm text-gray-600">
-                                  Year:
-                                </span>
-                                <span className="text-sm font-medium">
-                                  {user?.yearLevel}
-                                </span>
-                              </div>
-                            </div>
+                    <div className="space-y-4">
+                      {/* Personal Information */}
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <h3 className="text-sm font-medium text-gray-500 mb-2">
+                          Personal Information
+                        </h3>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600">Full Name:</span>
+                            <span className="text-sm font-medium">
+                              {user?.firstName} {user?.lastName}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600">Student ID:</span>
+                            <span className="text-sm font-medium">{user?.schoolId}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600">Course:</span>
+                            <span className="text-sm font-medium">{user?.course}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600">Year Level:</span>
+                            <span className="text-sm font-medium">{user?.yearLevel}</span>
                           </div>
                         </div>
                       </div>
-                      <DialogFooter>
-                        <Button
-                          variant="outline"
-                          onClick={() => setIsProfileDialogOpen(false)}
-                        >
-                          Close
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
 
+                      {/* Academic Summary */}
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <h3 className="text-sm font-medium text-gray-500 mb-2">
+                          Academic Summary
+                        </h3>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600">Enrolled Subjects:</span>
+                            <span className="text-sm font-medium">{subjects.length}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600">Active Subject:</span>
+                            <span className="text-sm font-medium">
+                              {selectedSubject?.name || 'None'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <DialogFooter className="mt-6 gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsProfileDialogOpen(false)}
+                    >
+                      Close
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={handleLogout}
+                      className="gap-2"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex h-[calc(100vh-4rem)]">
+        {/* Sidebar */}
+        <aside className="w-64 bg-white border-r overflow-y-auto">
+          <div className="p-4">
+            <div className="flex items-center space-x-2 mb-6">
+              <Book className="h-5 w-5 text-[#C9121F]" />
+              <h2 className="text-lg font-semibold">My Subjects</h2>
+            </div>
+
+            <div className="space-y-2">
+              {subjects.map((subject) => (
+                <button
+                  key={subject.id}
+                  onClick={() => handleSubjectChange(subject.id.toString())}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    selectedSubject?.id === subject.id
+                      ? 'bg-[#C9121F] text-white'
+                      : 'hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="flex items-center">
+                    <Folders className="h-4 w-4 mr-2" />
+                    <span className="truncate">{subject.name}</span>
+                  </div>
+                </button>
+              ))}
+              
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => setIsJoinDialogOpen(true)}
+              >
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Join Subject
+              </Button>
+            </div>
+          </div>
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto p-6">
+          {selectedSubject && (
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">{selectedSubject.name}</h2>
+                <p className="text-sm text-gray-500">Subject Code: {selectedSubject.subjectCode}</p>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleLogout}
-                    className="text-white hover:bg-[#EBC42E]/20"
+                    variant="outline"
+                    className="flex items-center space-x-2 hover:bg-gray-100"
                   >
-                    <LogOut className="h-4 w-4" />
+                    <Settings2Icon className="h-4 w-4" />
+                    <span>Settings</span>
                   </Button>
-                </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent 
+                  className="w-56 bg-white border rounded-md shadow-md animate-in fade-in-80 z-50" 
+                  align="end"
+                >
+                  <div className="px-2 py-1.5 border-b">
+                    <p className="text-sm font-medium text-gray-900">Subject Options</p>
+                    <p className="text-xs text-gray-500">Manage your subject settings</p>
+                  </div>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <DropdownMenuItem
+                        onSelect={(e) => e.preventDefault()}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 focus:bg-red-50 cursor-pointer px-2 py-1.5 m-1 rounded-md flex items-center"
+                      >
+                        <Trash2Icon className="h-4 w-4 mr-2" />
+                        Leave Subject
+                      </DropdownMenuItem>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="sm:max-w-[425px]">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="text-xl font-semibold">
+                          Leave {selectedSubject.name}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="text-gray-500">
+                          Are you sure you want to leave this subject? Your quiz records will be kept for reference, but you'll need to rejoin to access the subject again.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter className="gap-2">
+                        <AlertDialogCancel className="hover:bg-gray-100">
+                          Cancel
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleLeaveSubject}
+                          className="bg-red-600 hover:bg-red-700 text-white"
+                          disabled={isLeavingSubject}
+                        >
+                          {isLeavingSubject ? (
+                            <>
+                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                              Leaving...
+                            </>
+                          ) : (
+                            'Leave Subject'
+                          )}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+          {subjects.length === 0 ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center max-w-md">
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  Welcome to EduInsight
+                </h3>
+                <p className="text-gray-500 mb-4">
+                  Get started by joining your first subject.
+                </p>
+                <Button onClick={() => setIsJoinDialogOpen(true)}>
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Join Your First Subject
+                </Button>
               </div>
             </div>
-          </header>
+          ) : !selectedSubject ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center max-w-md">
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  Select a Subject
+                </h3>
+                <p className="text-gray-500">
+                  Choose a subject from the sidebar to view its content.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Subject Overview */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white p-6 rounded-xl shadow-sm">
+                  <h3 className="text-sm font-medium text-gray-500 mb-1">Quizzes</h3>
+                  <p className="text-2xl font-bold text-[#C9121F]">
+                    {selectedSubject.quizzes.filter(q => q.published).length}
+                  </p>
+                  <p className="text-sm text-gray-600">Available</p>
+                </div>
+                
+                <div className="bg-white p-6 rounded-xl shadow-sm">
+                  <h3 className="text-sm font-medium text-gray-500 mb-1">Completed</h3>
+                  <p className="text-2xl font-bold text-green-600">
+                    {calculateProgress().quizzes}
+                  </p>
+                  <p className="text-sm text-gray-600">Quizzes Done</p>
+                </div>
+                
+                <div className="bg-white p-6 rounded-xl shadow-sm">
+                  <h3 className="text-sm font-medium text-gray-500 mb-1">Progress</h3>
+                  <p className="text-2xl font-bold text-blue-600">
+                    {calculateProgress().overall}%
+                  </p>
+                  <p className="text-sm text-gray-600">Overall</p>
+                </div>
+              </div>
 
-          {selectedSubject && (
-            <div className="bg-white border-b">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex justify-between items-center h-14">
-                  <div className="flex space-x-4">
-                    {selectedSubject && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            className="flex items-center space-x-2"
+              {/* Available Quizzes */}
+              <div className="bg-white rounded-xl shadow-sm">
+                <div className="p-6 border-b">
+                  <h2 className="text-lg font-semibold">Available Quizzes</h2>
+                </div>
+                
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {selectedSubject.quizzes
+                      .filter((quiz) => quiz.published)
+                      .map((quiz) => {
+                        const quizRecord = selectedSubject.quizRecord.find(
+                          (record) => record.quizId === quiz.id && record.userId === user?.id
+                        );
+                        const isQuizDone = !!quizRecord;
+
+                        return (
+                          <div
+                            key={quiz.id}
+                            className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors"
                           >
-                            <Settings2Icon className="h-4 w-4" />
-                            <span>Settings</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-
-                        <DropdownMenuContent>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <DropdownMenuItem
-                                onSelect={(e) => e.preventDefault()}
-                              >
-                                <Trash2Icon className="h-4 w-4 mr-2" />
-                                Delete Subject
-                              </DropdownMenuItem>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent className="max-w-[425px]">
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>
-                                  Delete Subject
-                                </AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to leave{' '}
-                                  {selectedSubject.name}? This will remove all
-                                  associated data, including quizzes and student
-                                  records. This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter className="gap-2">
-                                <AlertDialogCancel className="mt-2">
-                                  Cancel
-                                </AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={handleLeaveSubject}
-                                  className="bg-red-600 hover:bg-red-700 text-white mt-2"
-                                  disabled={isLeavingSubject}
+                            <div className="flex justify-between items-start mb-4">
+                              <h3 className="font-medium">{quiz.title}</h3>
+                              <Badge variant={isQuizDone ? 'success' : 'outline'}>
+                                {isQuizDone ? 'Completed' : 'Not Started'}
+                              </Badge>
+                            </div>
+                            
+                            {isQuizDone ? (
+                              <div className="text-sm text-gray-600">
+                                Score: {quizRecord.score}/{quizRecord.totalPoints}
+                              </div>
+                            ) : (
+                              quiz.visibility === 'public' && (
+                                <Button
+                                  variant="outline"
+                                  className="w-full mt-2"
+                                  onClick={() => handleStartQuiz(quiz.id)}
                                 >
-                                  {isLeavingSubject
-                                    ? 'Leaving...'
-                                    : 'Leave Subject'}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
+                                  Start Quiz
+                                </Button>
+                              )
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
               </div>
             </div>
           )}
-
-          <main className="px-4 sm:px-6 lg:px-8 py-4 relative h-[calc(100vh-8rem)] overflow-y-auto">
-            
-            {screenSharing && (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                className="w-full h-full rounded-lg"
-              />
-            )}
-
-            {subjects.length === 0 ? (
-              // No subjects state
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center max-w-md">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    No Subjects Available
-                  </h3>
-                  <p className="text-gray-500 mb-4">
-                    Join a subject to get started with your classes.
-                  </p>
-                  <Button
-                    onClick={() => setIsJoinDialogOpen(true)}
-                    className="inline-flex items-center"
-                  >
-                    <PlusCircle className="h-4 w-4 mr-2" />
-                    Join New Subject
-                  </Button>
-                </div>
-              </div>
-            ) : !selectedSubject ? (
-              // No subject selected state
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center max-w-md">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    No Subject Selected
-                  </h3>
-                  <p className="text-gray-500 mb-4">
-                    Select a subject from the sidebar to view its details.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              // Existing subject view content
-              <div className="grid gap-4">
-                {/* Combined Subject Details and Statistics Card */}
-                <div className="bg-white rounded-lg shadow p-4 border-l-4 border-[#C9121F]">
-                  <div className="flex justify-between gap-4">
-                    {/* Subject Details - Made more compact */}
-                    <div className="flex-1">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h2 className="text-xl font-bold text-gray-900">
-                            {selectedSubject.name}
-                          </h2>
-                          <p className="text-xs text-blue-700">
-                            Code: {selectedSubject.subjectCode}
-                          </p>
-                          <p className="text-xs text-gray-600 line-clamp-2">
-                            {selectedSubject.description}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Statistics - Made more compact */}
-                    <div className="flex-1 border-l pl-4">
-                      <h3 className="text-sm font-semibold text-blue-900 mb-2">
-                        Class Statistics
-                      </h3>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="bg-gray-50 rounded p-2 text-center">
-                          <p className="text-lg font-bold text-blue-600">
-                            {selectedSubject.quizzes.length}
-                          </p>
-                          <p className="text-xs text-gray-600">Quizzes</p>
-                        </div>
-                        <div className="bg-gray-50 rounded p-2 text-center">
-                          <p className="text-lg font-bold text-green-600">
-                            {selectedSubject.quizRecord.length}
-                          </p>
-                          <p className="text-xs text-gray-600">Records</p>
-                        </div>
-                        <div className="bg-gray-50 rounded p-2 text-center">
-                          <p className="text-lg font-bold text-amber-600">
-                            {calculateProgress().overall}%
-                          </p>
-                          <p className="text-xs text-gray-600">Progress</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-            {/* Quizzes List */}
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-[#EBC42E]">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-2">
-                  <Clock className="h-5 w-5 text-[#C9121F]" />
-                  <h2 className="text-xl font-semibold">Available Quizzes</h2>
-                </div>
-              </div>
-
-              <ScrollArea className="h-[calc(100vh-24rem)] w-full rounded-md">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
-                  {selectedSubject?.quizzes
-                    .filter((quiz) => quiz.published)
-                    .map((quiz) => {
-                      const quizRecord = selectedSubject.quizRecord.find(
-                        (record) =>
-                          record.quizId === quiz.id &&
-                          record.userId === user.id,
-                      );
-                      const isQuizDone = !!quizRecord;
-
-                      return (
-                        <div
-                          key={quiz.id}
-                          className="group relative bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow"
-                        >
-                          <div
-                            className="h-32 rounded-t-lg flex items-center justify-center"
-                            style={{
-                              backgroundColor:
-                                quiz.color ||
-                                `hsl(${Math.random() * 360}, 70%, 90%)`,
-                            }}
-                          >
-                            <h3 className="text-lg font-semibold text-gray-800 px-4 text-center">
-                              {quiz.title}
-                            </h3>
-                          </div>
-                          <div className="p-4 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <Badge
-                                variant={isQuizDone ? 'secondary' : 'outline'}
-                              >
-                                {isQuizDone ? 'Completed' : 'Not Started'}
-                              </Badge>
-                              {isQuizDone && (
-                                <Badge
-                                  variant="success"
-                                  className="bg-green-100 text-green-800"
-                                >
-                                  Score: {quizRecord.score}/
-                                  {quizRecord.totalPoints}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="space-y-2">
-                              {!isQuizDone && quiz.visibility === 'public' && (
-                                <Button
-                                  className="w-full"
-                                  onClick={() => handleStartQuiz(quiz.id)}
-                                >
-                                  Start Quiz
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              </ScrollArea>
-            </div>
-            <Toaster />
-            <Dialog open={isJoinDialogOpen} onOpenChange={setIsJoinDialogOpen}>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Join a Subject</DialogTitle>
-                  <DialogDescription>
-                    Enter the subject code to join a new subject.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="subject-code" className="text-right">
-                      Code
-                    </Label>
-                    <Input
-                      id="subject-code"
-                      value={subjectCode}
-                      onChange={(e) => setSubjectCode(e.target.value)}
-                      className="col-span-3"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={handleJoinSubject} disabled={isJoining}>
-                    {isJoining ? 'Joining...' : 'Join Subject'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </main>
-        </div>
+        </main>
       </div>
-    </SidebarProvider>
+
+      {/* Existing Dialogs */}
+      <Dialog open={isJoinDialogOpen} onOpenChange={setIsJoinDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-gray-900">Join a Subject</DialogTitle>
+            <DialogDescription className="text-gray-500">
+              Enter the subject code provided by your teacher to join a new subject.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-6">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="subject-code">Subject Code</Label>
+                <Input
+                  id="subject-code"
+                  placeholder="Enter code (e.g., MATH101)"
+                  value={subjectCode}
+                  onChange={(e) => setSubjectCode(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsJoinDialogOpen(false)}
+              className="w-full sm:w-auto"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleJoinSubject} 
+              disabled={isJoining}
+              className="w-full sm:w-auto"
+            >
+              {isJoining ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Joining...
+                </>
+              ) : (
+                'Join Subject'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      <Toaster />
+    </div>
   );
 };

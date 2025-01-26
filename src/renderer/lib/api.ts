@@ -46,11 +46,10 @@ export default {
     removeTray: () => ipcRenderer.send(IPCRoute.WINDOW_REMOVE_TRAY),
   },
   database: {
-    initialize: () => ipcRenderer.send(IPCRoute.DATABASE_INITIALIZE),
     connect: (url: string) =>
       ipcRenderer.invoke(IPCRoute.DATABASE_CONNECT, url) as Promise<{
         success: boolean;
-        error: string;
+        error?: string;
       }>,
     disconnect: () => ipcRenderer.invoke(IPCRoute.DATABASE_DISCONNECT),
     verifyDevice: () => ipcRenderer.invoke(IPCRoute.DATABASE_VERIFY_DEVICE),
@@ -317,8 +316,6 @@ export default {
     has: (key: string) => ipcRenderer.invoke(IPCRoute.STORE_HAS, key),
   },
   socket: {
-    update: (url: string) =>
-      ipcRenderer.invoke(IPCRoute.UPDATE_SOCKET_URL, url),
     test: (url: string) =>
       ipcRenderer.invoke(IPCRoute.TEST_SOCKET_URL, url) as Promise<boolean>,
     initialize: () =>

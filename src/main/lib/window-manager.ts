@@ -136,7 +136,7 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
     options: {
       ...baseWindowConfig,
       title: 'Setup Wizard',
-      width: 500,
+      width: 900,
       height: 550,
       center: true,
       show: true,

@@ -1,23 +1,19 @@
 import { Socket, io } from "socket.io-client";
-import StoreManager from '@/main/lib/store';
 import http from 'http';
 import https from 'https';
 import { app } from 'electron';
+import { Config } from "@/shared/constants";
 
 let socketInstance: Socket | null = null;
 
-export function createSocketConnection(url?: string): Promise<Socket> {
+export function createSocketConnection(): Promise<Socket> {
 
   return new Promise((resolve, reject) => {
     if (socketInstance) {
       socketInstance.disconnect();
     }
 
-    const store = StoreManager.getInstance();
-    const savedUrl = store.get('socketUrl') as string;
-    const socketUrl = url || savedUrl;
-
-    socketInstance = io(socketUrl, {
+    socketInstance = io(Config.SOCKET_URL, {
       rejectUnauthorized: false,
       transports: ['polling', 'websocket'], // Try polling first, then websocket
       reconnection: true,
@@ -32,7 +28,7 @@ export function createSocketConnection(url?: string): Promise<Socket> {
 
     socketInstance.on('connect', () => {
       console.log('Socket connected successfully');
-      store.set('socketUrl', socketUrl);
+     
       resolve(socketInstance);
     });
 

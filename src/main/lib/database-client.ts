@@ -38,18 +38,14 @@ class DatabaseClient {
     }
 
     const testClient = new PrismaClient({
-      datasources: {
-        db: {
-          url: url,
-        },
-      },
+      datasourceUrl: url,
     });
 
     try {
       await testClient.$connect();
       return true;
     } catch (error) {
-      console.error('Database connection test failed:', error); 
+      console.error('Database connection test failed:', error);
       return false;
     } finally {
       await testClient.$disconnect();
@@ -73,7 +69,9 @@ class DatabaseClient {
       // Test the connection before proceeding
       const isConnectionSuccessful = await this.testConnection(url);
       if (!isConnectionSuccessful) {
-        throw new Error('Failed to connect to the database. Please check your database URL and ensure the database server is running.');
+        throw new Error(
+          'Failed to connect to the database. Please check your database URL and ensure the database server is running.',
+        );
       }
 
       // Disconnect existing client if it exists
@@ -107,7 +105,9 @@ class DatabaseClient {
    */
   public get prisma(): PrismaClient {
     if (!this.client) {
-      throw new Error('Database client has not been initialized. Call connect() first.');
+      throw new Error(
+        'Database client has not been initialized. Call connect() first.',
+      );
     }
     return this.client;
   }

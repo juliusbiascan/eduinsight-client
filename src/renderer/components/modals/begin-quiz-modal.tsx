@@ -16,8 +16,6 @@ interface BeginQuizModalProps {
   selectedQuiz: string | null;
   setSelectedQuiz: (quizId: string) => void;
   handleStartLiveQuiz: () => void;
-  navigate: (path: string) => void;
-  selectedSubject: { id: string } | null;
 }
 
 const FilterContainer = styled.div`
@@ -59,8 +57,6 @@ export const BeginQuizModal: React.FC<BeginQuizModalProps> = ({
   selectedQuiz,
   setSelectedQuiz,
   handleStartLiveQuiz,
-  navigate,
-  selectedSubject,
 }) => {
   const [isMounted, setIsMounted] = useState(false);
   const [filter, setFilter] = useState('');
@@ -129,7 +125,7 @@ export const BeginQuizModal: React.FC<BeginQuizModalProps> = ({
       </TableContainer>
       <DialogFooter>
         <Button onClick={handleStartLiveQuiz}>Start Quiz</Button>
-        <Button onClick={() => navigate(`/subjects/${selectedSubject?.id}`)}>
+        <Button variant="outline" onClick={() => onOpenChange(false)}>
           Cancel
         </Button>
       </DialogFooter>

@@ -2,17 +2,13 @@ import "../../styles/globals.css";
 import ReactDOM from "react-dom/client";
 import { Routes, Route, HashRouter } from "react-router-dom";
 import SetupLayout from "./routes/layout";
-import SocketSetup from "./routes/socket-setup";
-import DatabaseSetup from "./routes/database-setup";
-import { DeviceSetup } from "./routes/device-setup";
+import { DeviceSetup } from "./routes/setup";
 
 function Index() {
   return <HashRouter>
     <Routes>
       <Route path="/" element={<SetupLayout />}>
-        <Route index element={<SocketSetup />} />
-        <Route path="database-setup" element={<DatabaseSetup />} />
-        <Route path="device-setup" element={<DeviceSetup />} />
+        <Route index element={<DeviceSetup />}/>
       </Route>
     </Routes>
   </HashRouter>

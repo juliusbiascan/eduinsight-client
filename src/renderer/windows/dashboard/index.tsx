@@ -2,7 +2,7 @@ import '../../styles/globals.css';
 import ReactDOM from 'react-dom/client';
 import { Routes, Route, HashRouter } from 'react-router-dom';
 import DashboardLayout from './routes/dashboard-layout';
-import { GuestView } from './routes/guest-view';
+import { InitializingConsole } from './routes/initializing-console';
 import { Toaster } from '@/renderer/components/ui/toaster';
 import { StudentConsole } from './routes/student-console';
 import { TeacherConsole } from './routes/teacher-console';
@@ -18,7 +18,7 @@ function Index() {
     <HashRouter>
       <Routes>
         <Route path="/" element={<DashboardLayout />}>
-          <Route index element={<GuestView />} />
+          <Route index element={<InitializingConsole />} />
           <Route path="student" element={<StudentConsole />} />
           <Route path="teacher" element={<TeacherConsole />} />
           <Route

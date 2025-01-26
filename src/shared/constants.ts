@@ -1,3 +1,8 @@
+export enum Config {
+  SOCKET_URL = 'https://socket.eduinsight.systems',
+  DATABASE_URL = 'mysql://eduinsight_user:eduinsight_pass@192.168.1.142:3306/eduinsight',
+}
+
 /**
  * Browser Window unique identifier names.
  *
@@ -31,7 +36,6 @@ export enum IPCRoute {
   WINDOW_REMOVE_TRAY = '/window/remove-tray',
 
   CONNECTION_STATUS_UPDATE = '/connection/status-update',
-  DATABASE_INITIALIZE = '/database/initialize',
   DATABASE_GET_DEVICE_USER_BY_ID = '/database/get_device_user_by_id',
   DATABASE_VERIFY_DEVICE = '/database/verify_device',
   DATABASE_IMPORT_GOOGLE_FORMS = 'database:import-google-forms',
@@ -105,7 +109,6 @@ export enum IPCRoute {
   STORE_CLEAR = '/store/clear',
   STORE_HAS = '/store/has',
 
-  UPDATE_SOCKET_URL = '/update_socket_url',
   INITIALIZE_SOCKET = '/initialize_socket',
   TEST_SOCKET_URL = '/test_socket_url',
   WINDOW_CLOSE_SETUP = '/window/close-setup',
