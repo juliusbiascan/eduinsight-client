@@ -7,4 +7,6 @@ export default function () {
     console.log('Starting monitoring...', userId, deviceId, labId);
     startMonitoring(userId, deviceId, labId);
   });
+
+  
 }

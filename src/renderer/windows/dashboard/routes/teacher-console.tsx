@@ -1,5 +1,5 @@
 import logo from '@/renderer/assets/passlogo-small.png';
-import { Checkbox } from "@/renderer/components/ui/checkbox";
+import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Button } from '@/renderer/components/ui/button';
 import { Toaster } from '@/renderer/components/ui/toaster';
 import { useToast } from '@/renderer/hooks/use-toast';
@@ -48,6 +48,8 @@ import {
   Trash2Icon,
   Minimize2,
   PlayIcon,
+  Bell,
+  Download,
 } from 'lucide-react';
 import { Badge } from '@/renderer/components/ui/badge';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
@@ -94,8 +96,8 @@ import { WebpageModal } from '../../../components/modals/webpage-modal';
 import { BeginQuizModal } from '../../../components/modals/begin-quiz-modal';
 import { ShareScreenModal } from '../../../components/modals/share-screen-modal';
 import { ShowScreensModal } from '../../../components/modals/show-screen-modal';
+import { Progress } from '@/renderer/components/ui/progress';
 //import Peer from 'simple-peer';
-
 
 interface StudentInfo {
   id: string;
@@ -107,8 +109,43 @@ interface StudentInfo {
 interface StudentScreenState {
   [userId: string]: {
     screenData: string;
+    lastUpdate?: number;
   };
 }
+
+interface FileTransfer {
+  id: string;
+  filename: string;
+  progress: number;
+  status: 'pending' | 'uploading' | 'completed' | 'error';
+  error?: string;
+}
+
+interface FileNotification {
+  subjectName: any;
+  id: string;
+  type: 'file';
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+  status: 'pending' | 'uploading' | 'completed' | 'error';
+  progress?: number;
+  error?: string;
+  targetCount?: number;
+  filePath?: string; // Add this new property
+}
+
+interface StandardNotification {
+  id: string;
+  type: 'standard';
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+}
+
+type Notification = FileNotification | StandardNotification;
 
 export const TeacherConsole = () => {
   const { socket, isConnected } = useSocket();
@@ -144,7 +181,6 @@ export const TeacherConsole = () => {
   const [isWebpageDialogOpen, setIsWebpageDialogOpen] = useState(false);
   const [webpageUrl, setWebpageUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [fileProgress, setFileProgress] = useState<number>(0);
   const [isBeginQuizDialogOpen, setIsBeginQuizDialogOpen] = useState(false);
   const [selectedQuiz, setSelectedQuiz] = useState<string | null>(null);
   const [quizzes, setQuizzes] =
@@ -152,13 +188,32 @@ export const TeacherConsole = () => {
   const [isShareScreenDialogOpen, setIsShareScreenDialogOpen] = useState(false);
   const [isShowScreensDialogOpen, setIsShowScreensDialogOpen] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [fileTransfers, setFileTransfers] = useState<
+    Record<string, FileTransfer>
+  >({});
+  const [globalFileProgress, setGlobalFileProgress] = useState<number>(0);
+  const [transferQueue, setTransferQueue] = useState<string[]>([]);
+  const [currentTransfer, setCurrentTransfer] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const screenUpdateTimestamps = useRef<Record<string, number>>({});
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const lastScreenUpdateRef = useRef<Record<string, number>>({});
+  const reconnectionAttempts = useRef(0);
+  const MAX_RECONNECTION_ATTEMPTS = 5;
+  const screenCaptureStatus = useRef<Record<string, boolean>>({});
+  const maxReconnectAttempts = useRef(5);
+  const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const validateAccess = async () => {
       try {
         const device = await api.database.getDevice();
-        const activeUser = await api.database.getActiveUserByDeviceId(device.id, device.labId);
-        
+        const activeUser = await api.database.getActiveUserByDeviceId(
+          device.id,
+          device.labId,
+        );
+
         if (!activeUser || activeUser.user.role !== DeviceUserRole.TEACHER) {
           navigate('/');
           window.close();
@@ -354,7 +409,9 @@ export const TeacherConsole = () => {
     );
     setSubjectRecords(subjectRecords);
 
-    const activeUsers = await api.database.getActiveUsersBySubjectId( selectedSubject.id,);
+    const activeUsers = await api.database.getActiveUsersBySubjectId(
+      selectedSubject.id,
+    );
     setActiveUsers(activeUsers);
 
     // Fetch student info for all records
@@ -446,21 +503,25 @@ export const TeacherConsole = () => {
   const CHUNK_SIZE = 512 * 1024; // 512KB chunks
   const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB limit
 
-  // Add new helper function for chunked array buffer processing
+  // Optimized helper function for chunked array buffer processing
   const createChunkedArray = (arrayBuffer: ArrayBuffer): string[] => {
     const chunks: string[] = [];
     const totalChunks = Math.ceil(arrayBuffer.byteLength / CHUNK_SIZE);
-    
+    const uint8Array = new Uint8Array(arrayBuffer);
+
     for (let i = 0; i < totalChunks; i++) {
       const start = i * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, arrayBuffer.byteLength);
-      const chunk = arrayBuffer.slice(start, end);
+      const chunk = uint8Array.slice(start, end);
+
+      // Convert chunk to base64 in smaller portions
+      const chunkArray: number[] = Array.from(chunk);
       const base64Chunk = btoa(
-        String.fromCharCode(...new Uint8Array(chunk))
+        chunkArray.reduce((data, byte) => data + String.fromCharCode(byte), ''),
       );
       chunks.push(base64Chunk);
     }
-    
+
     return chunks;
   };
 
@@ -470,21 +531,23 @@ export const TeacherConsole = () => {
     subjectName: string,
     targetDevices: string[],
     socket: any,
-    onProgress: (progress: number) => void
+    onProgress: (progress: number) => void,
   ): Promise<void> => {
     if (file.size > MAX_FILE_SIZE) {
-      throw new Error(`File size exceeds maximum limit of ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
+      throw new Error(
+        `File size exceeds maximum limit of ${MAX_FILE_SIZE / (1024 * 1024)}MB`,
+      );
     }
 
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      
+
       reader.onload = async () => {
         try {
           const arrayBuffer = reader.result as ArrayBuffer;
           const chunks = createChunkedArray(arrayBuffer);
           const totalChunks = chunks.length;
-          
+
           for (let i = 0; i < totalChunks; i++) {
             await new Promise<void>((chunkResolve) => {
               setTimeout(() => {
@@ -496,9 +559,9 @@ export const TeacherConsole = () => {
                   chunkIndex: i,
                   totalChunks,
                   fileType: file.type,
-                  fileSize: file.size
+                  fileSize: file.size,
                 });
-                onProgress((i + 1) / totalChunks * 100);
+                onProgress(((i + 1) / totalChunks) * 100);
                 chunkResolve();
               }, 50); // 50ms delay between chunks
             });
@@ -515,45 +578,116 @@ export const TeacherConsole = () => {
   };
 
   // Update handleFileChange
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file || !selectedSubject) return;
 
+    const fileId = `${file.name}-${Date.now()}`; // Declare fileId at the top of the function
+
+    // Create initial notification
+    setNotifications((prev) => [
+      {
+        id: fileId,
+        type: 'file',
+        title: 'Preparing Upload',
+        message: `Preparing to share "${file.name}"`,
+        time: new Date().toISOString(),
+        read: false,
+        status: 'pending',
+        progress: 0,
+        subjectName: selectedSubject.name,
+      },
+      ...prev,
+    ]);
+
     try {
-      if (file.size > MAX_FILE_SIZE) {
-        toast({
-          title: 'Error',
-          description: `File size must be less than ${MAX_FILE_SIZE / (1024 * 1024)}MB`,
-          variant: 'destructive',
-        });
-        return;
+      // Add to active transfers and queue
+      setTransferQueue((prev) => [...prev, fileId]);
+
+      setFileTransfers((prev) => ({
+        ...prev,
+        [fileId]: {
+          id: fileId,
+          filename: file.name,
+          progress: 0,
+          status: 'pending',
+        },
+      }));
+
+      const targetDevices =
+        selectedStudents.length > 0
+          ? activeUsers
+              .filter((user) => selectedStudents.includes(user.userId))
+              .map((user) => user.deviceId)
+          : activeUsers.map((user) => user.deviceId);
+
+      if (targetDevices.length === 0) {
+        throw new Error('No target devices selected');
       }
-
-      const targetDevices = selectedStudents.length > 0 
-        ? activeUsers.filter(user => selectedStudents.includes(user.userId)).map(user => user.deviceId)
-        : activeUsers.map(user => user.deviceId);
-
-      toast({
-        title: 'File Transfer Started',
-        description: `Starting transfer of "${file.name}"`,
-      });
 
       await processFileInChunks(
         file,
         selectedSubject.name,
         targetDevices,
         socket,
-        (progress) => setFileProgress(progress)
+        (progress) => {
+          setFileTransfers((prev) => ({
+            ...prev,
+            [fileId]: {
+              ...prev[fileId],
+              progress,
+              status: 'uploading',
+            },
+          }));
+          setGlobalFileProgress(progress);
+        },
       );
-
     } catch (error) {
       console.error('Error processing file:', error);
+
+      // Update transfer status on error
+      setFileTransfers((prev) => ({
+        ...prev,
+        [fileId]: {
+          ...prev[fileId],
+          status: 'error',
+          error:
+            error instanceof Error ? error.message : 'Failed to process file',
+        },
+      }));
+
+      // Remove from active transfers and queue
+      setTransferQueue((prev) => prev.filter((id) => id !== fileId));
+
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to process file',
+        description:
+          error instanceof Error ? error.message : 'Failed to process file',
         variant: 'destructive',
       });
-      setFileProgress(0);
+
+      setGlobalFileProgress(0);
+
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === fileId && n.type === 'file'
+            ? {
+                ...n,
+                status: 'error',
+                title: 'Upload Failed',
+                message: `Failed to share "${file.name}"`,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : 'Failed to process file',
+              }
+            : n,
+        ),
+      );
+
+      setUnreadCount((prev) => prev + 1);
     } finally {
       if (event.target) {
         event.target.value = '';
@@ -561,43 +695,142 @@ export const TeacherConsole = () => {
     }
   };
 
+  // Add useEffect to handle transfer queue
+  useEffect(() => {
+    if (transferQueue.length > 0 && !currentTransfer) {
+      const nextTransfer = transferQueue[0];
+      setCurrentTransfer(nextTransfer);
+      setTransferQueue((prev) => prev.slice(1));
+    }
+  }, [transferQueue, currentTransfer]);
+
   // Add socket event listeners for file transfer updates
   useEffect(() => {
-    if (socket) {
-      socket.on('file-progress', ({ filename, progress }) => {
-        toast({
-          title: 'File Transfer Progress',
-          description: `${filename}: ${progress}%`,
-          variant: 'default',
-        });
-      });
+    if (!socket) return;
 
-      socket.on('file-complete', ({ filename, targetCount }) => {
-        toast({
+    const safeSetFileTransfers = (
+      updater: (
+        prev: Record<string, FileTransfer>,
+      ) => Record<string, FileTransfer>,
+    ) => {
+      setFileTransfers((prev) => {
+        const next = updater(prev);
+        // Prevent unnecessary updates if the state is the same
+        return Object.is(prev, next) ? prev : next;
+      });
+    };
+
+    const handleFileProgress = ({
+      fileId,
+      progress,
+    }: {
+      fileId: string;
+      filename: string;
+      progress: number;
+    }) => {
+      safeSetFileTransfers((prev) => ({
+        ...prev,
+        [fileId]: {
+          ...prev[fileId],
+          progress,
+          status: 'uploading',
+        },
+      }));
+      setGlobalFileProgress(progress);
+    };
+
+    const handleFileComplete = ({
+      fileId,
+      filename,
+      targetCount,
+    }: {
+      fileId: string;
+      filename: string;
+      targetCount: number;
+      filePath?: string;
+    }) => {
+      safeSetFileTransfers((prev) => ({
+        ...prev,
+        [fileId]: {
+          ...prev[fileId],
+          progress: 100,
+          status: 'completed',
+        },
+      }));
+
+      // Delay cleanup to prevent state update conflicts
+      setTimeout(() => {
+        safeSetFileTransfers((prev) => {
+          const { [fileId]: _, ...rest } = prev;
+          return rest;
+        });
+        setCurrentTransfer(null);
+        setGlobalFileProgress(0);
+      }, 3000);
+
+      setNotifications((prev) => [
+        {
+          id: fileId,
+          type: 'file',
           title: 'File Transfer Complete',
-          description: `Successfully shared "${filename}" with ${targetCount} student${targetCount !== 1 ? 's' : ''}`,
-          variant: 'default',
-        });
-        setFileProgress(0);
-        setSelectedStudents([]);
-      });
+          message: `Successfully shared "${filename}" with ${targetCount} student${targetCount !== 1 ? 's' : ''}`,
+          time: new Date().toISOString(),
+          read: false,
+          status: 'completed',
+          progress: 100,
+          subjectName: selectedSubject.name,
+        },
+        ...prev,
+      ]);
+    };
 
-      socket.on('file-error', ({ error, filename }) => {
-        toast({
+    const handleFileError = ({
+      fileId,
+      error,
+      filename,
+    }: {
+      fileId: string;
+      error: string;
+      filename: string;
+    }) => {
+      safeSetFileTransfers((prev) => ({
+        ...prev,
+        [fileId]: {
+          ...prev[fileId],
+          status: 'error',
+          error,
+        },
+      }));
+
+      setCurrentTransfer(null);
+      setGlobalFileProgress(0);
+
+      setNotifications((prev) => [
+        {
+          id: fileId,
+          type: 'file',
           title: 'File Transfer Failed',
-          description: `Error sharing "${filename}": ${error}`,
-          variant: 'destructive',
-        });
-        setFileProgress(0);
-      });
+          message: `Error sharing "${filename}": ${error}`,
+          time: new Date().toISOString(),
+          read: false,
+          status: 'error',
+          progress: 100,
+          subjectName: selectedSubject.name,
+        },
+        ...prev,
+      ]);
+    };
 
-      return () => {
-        socket.off('file-progress');
-        socket.off('file-complete');
-        socket.off('file-error');
-      };
-    }
-  }, [socket]);
+    socket.on('file-progress', handleFileProgress);
+    socket.on('file-complete', handleFileComplete);
+    socket.on('file-error', handleFileError);
+
+    return () => {
+      socket.off('file-progress', handleFileProgress);
+      socket.off('file-complete', handleFileComplete);
+      socket.off('file-error', handleFileError);
+    };
+  }, [socket, toast]);
 
   const handleShareFile = () => {
     if (fileInputRef.current) {
@@ -609,12 +842,18 @@ export const TeacherConsole = () => {
   const renderStudentScreen = useCallback(
     (userId: string, student: StudentInfo) => {
       const screenState = studentScreenState[userId];
+      const isStale =
+        screenState?.lastUpdate && Date.now() - screenState.lastUpdate > 5000;
 
       return (
         <div
           key={userId}
-          className={`flex flex-col p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer`}
-        > 
+          className={`flex flex-col p-3 rounded-lg ${
+            isReconnecting ? 'bg-blue-50' : isStale ? 'bg-gray-100' : 'bg-gray-50'
+          } hover:bg-gray-100 transition-colors border ${
+            isReconnecting ? 'border-blue-200' : 'border-transparent'
+          }`}
+        >
           {/* Student Header */}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center space-x-2">
@@ -631,39 +870,56 @@ export const TeacherConsole = () => {
                 <p className="text-xs text-gray-500">ID: {student?.schoolId}</p>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="default" className="text-xs">
-                Active
-              </Badge>
-            </div>
+            <Badge
+              variant={isReconnecting ? 'secondary' : isStale ? 'outline' : 'default'}
+              className="text-xs"
+            >
+              {isReconnecting ? 'Reconnecting...' : isStale ? 'Stale' : 'Live'}
+            </Badge>
           </div>
 
           {/* Screen Preview */}
-          <div className="relative w-full aspect-video bg-gray-200 rounded-lg overflow-hidden group">
-            <div className="flex items-center justify-center h-full">
-              {screenState?.screenData ? (
-                <img
-                  src={screenState.screenData}
-                  alt="Student Screen"
-                  className="object-cover w-full h-full"
-                />
-              ) : (
-                <p className="text-sm text-gray-400">
-                  No screen data available
-                </p>
-              )}
-            </div>
+          <div className="relative w-full aspect-video bg-gray-200 rounded-lg overflow-hidden">
+            {isReconnecting ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-blue-50/50 backdrop-blur-sm">
+                <div className="text-center">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-400 border-t-transparent mb-2"></div>
+                  <p className="text-sm text-blue-600">Reconnecting... ({reconnectionAttempts.current}/{MAX_RECONNECTION_ATTEMPTS})</p>
+                </div>
+              </div>
+            ) : screenState?.screenData ? (
+              <img
+                src={screenState.screenData}
+                alt="Student Screen"
+                className="object-cover w-full h-full"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-sm text-gray-400">No screen data available</p>
+              </div>
+            )}
           </div>
+
+          {/* Status Message */}
+          {isReconnecting ? (
+            <div className="mt-2 text-xs text-blue-600 text-center">
+              Attempting to restore connection...
+            </div>
+          ) : isStale ? (
+            <div className="mt-2 text-xs text-gray-500 text-center">
+              Screen data is stale. Connection might be lost.
+            </div>
+          ) : null}
         </div>
       );
     },
-    [studentScreenState],
+    [studentScreenState, isReconnecting, reconnectionAttempts],
   );
 
   const handleStartScreenShare = async () => {
     // try {
     //   const sourceId = await api.screen.getScreenSourceId();
-    //   const stream = await (navigator.mediaDevices as any).getUserMedia({   
+    //   const stream = await (navigator.mediaDevices as any).getUserMedia({
     //     audio: false,
     //     video: {
     //       mandatory: {
@@ -672,14 +928,12 @@ export const TeacherConsole = () => {
     //       },
     //     },
     //   });
-
     //   localStreamRef.current = stream;
     //   setIsScreenSharing(true);
-
     //   const peer = new Peer({
     //     initiator: true,
     //     trickle: true,
-    //     stream, 
+    //     stream,
     //     config: {
     //       iceServers: [
     //         {
@@ -694,9 +948,7 @@ export const TeacherConsole = () => {
     //       iceTransportPolicy: 'all',
     //     },
     //   });
-
     //   peerRef.current = peer;
-
     //   peer.on('signal', (data) => {
     //     activeUsers.forEach((activeUser) => {
     //       socket.emit('screen-share-offer', {
@@ -710,7 +962,6 @@ export const TeacherConsole = () => {
     //   console.error('Error starting screen share:', error);
     //   setIsScreenSharing(false);
     //   localStreamRef.current?.getTracks().forEach((track) => track.stop());
-
     //   toast({
     //     title: 'Error',
     //     description: 'Failed to start screen sharing',
@@ -723,9 +974,7 @@ export const TeacherConsole = () => {
     // try {
     //   // Stop all tracks in the local stream
     //   localStreamRef.current?.getTracks().forEach((track) => track.stop());
-
     //   setIsScreenSharing(false);
-
     //   // Notify students that screen sharing has stopped
     //   activeUsers.forEach((activeUser) => {
     //     socket.emit('screen-share-stopped', {
@@ -733,7 +982,6 @@ export const TeacherConsole = () => {
     //       receiverId: activeUser.userId,
     //     });
     //   });
-
     //   // Destroy the peer connection
     //   peerRef.current?.destroy();
     //   peerRef.current = null;
@@ -741,6 +989,7 @@ export const TeacherConsole = () => {
     //   console.error('Error stopping screen share:', error);
     // }
   };
+
 
   useEffect(() => {
     if (socket && isConnected && selectedSubject) {
@@ -758,7 +1007,7 @@ export const TeacherConsole = () => {
 
       socket.emit('join-server', selectedSubject.id);
 
-      socket.on('student-joined', ({ _userId, subjectId }) => {
+      socket.on('student-joined', ({ subjectId }) => {
         if (selectedSubject.id === subjectId) {
           fetchActiveUsers();
           toast({
@@ -768,7 +1017,7 @@ export const TeacherConsole = () => {
         }
       });
 
-      socket.on('student-left', ({ _userId, subjectId }) => {
+      socket.on('student-left', ({ subjectId }) => {
         if (selectedSubject.id === subjectId) {
           fetchActiveUsers();
           toast({
@@ -778,7 +1027,7 @@ export const TeacherConsole = () => {
         }
       });
 
-      socket.on('student-logged-out', ({ _userId, subjectId }) => {
+      socket.on('student-logged-out', ({ subjectId }) => {
         if (selectedSubject.id === subjectId) {
           fetchActiveUsers();
           toast({
@@ -788,11 +1037,17 @@ export const TeacherConsole = () => {
         }
       });
 
-      socket.on('screen-data', ({ userId, screenData }) => {
-        handleScreenUpdate(userId, screenData);
+      socket.on('screen-data', ({ userId, screenData, timestamp }) => {
+        handleScreenUpdate(userId, screenData, timestamp);
       });
 
-      //socket.on('screen-share-offer', handleScreenShareOffer);
+      socket.on('screen-share-error', ({ error, userId }) => {
+        toast({
+          title: 'Screen Share Error',
+          description: `Error capturing screen for student ${studentInfo[userId]?.firstName}: ${error}`,
+          variant: 'destructive',
+        });
+      });
 
       return () => {
         socket.off('screen-share-offer');
@@ -800,39 +1055,223 @@ export const TeacherConsole = () => {
         socket.off('student-left');
         socket.off('student-logged-out');
         socket.off('screen-data');
+        socket.off('screen-share-error');
       };
     }
-  }, [socket, selectedSubject, fetchActiveUsers]);
-
+  }, [socket, selectedSubject, fetchActiveUsers, studentInfo]);
+  
+  // Update screen sharing effect
   useEffect(() => {
+    if (!socket || !isConnected || !selectedSubject) {
+      return;
+    }
+
     if (showScreens) {
+      console.log('Starting screen sharing for users:', activeUsers);
+      socket.emit('join-server', selectedSubject.id);
+
+      // Start screen sharing for each active user
       activeUsers.forEach((user) => {
-        socket.emit('show-screen', {
-          deviceId: user.deviceId,
-          userId: user.userId,
-          subjectId: selectedSubject.id,
-        });
+        if (!screenCaptureStatus.current[user.userId]) {
+          socket.emit('show-screen', {
+            userId: user.userId,
+            subjectId: selectedSubject.id,
+          });
+          screenCaptureStatus.current[user.userId] = true;
+        }
       });
+
+      // Handle socket disconnection
+      const handleDisconnect = (reason: string) => {
+        console.log('Socket disconnected:', reason);
+        setIsReconnecting(true);
+
+        // Clear existing timeout if any
+        if (reconnectTimeout.current) {
+          clearTimeout(reconnectTimeout.current);
+        }
+
+        // Attempt to reconnect
+        const attemptReconnect = () => {
+          if (reconnectionAttempts.current < maxReconnectAttempts.current) {
+            reconnectionAttempts.current++;
+            console.log(`Reconnection attempt ${reconnectionAttempts.current}`);
+            
+            socket.connect();
+            
+            reconnectTimeout.current = setTimeout(() => {
+              if (!socket.connected) {
+                attemptReconnect();
+              }
+            }, 5000);
+          } else {
+            setShowScreens(false);
+            setIsReconnecting(false);
+            reconnectionAttempts.current = 0;
+            screenCaptureStatus.current = {};
+            
+            toast({
+              title: 'Connection Lost',
+              description: 'Failed to reconnect to the screen sharing service.',
+              variant: 'destructive',
+            });
+          }
+        };
+
+        attemptReconnect();
+      };
+
+      // Handle successful reconnection
+      const handleReconnect = () => {
+        console.log('Socket reconnected');
+        setIsReconnecting(false);
+        reconnectionAttempts.current = 0;
+        
+        // Restart screen sharing for all active users
+        if (selectedSubject && showScreens) {
+          socket.emit('join-server', selectedSubject.id);
+          activeUsers.forEach((user) => {
+            socket.emit('show-screen', {
+              userId: user.userId,
+              subjectId: selectedSubject.id,
+            });
+            screenCaptureStatus.current[user.userId] = true;
+          });
+        }
+      };
+
+      socket.on('disconnect', handleDisconnect);
+      socket.on('reconnect', handleReconnect);
+      socket.on('connect', handleReconnect);
+
+      return () => {
+        socket.off('disconnect', handleDisconnect);
+        socket.off('reconnect', handleReconnect);
+        socket.off('connect', handleReconnect);
+        
+        if (reconnectTimeout.current) {
+          clearTimeout(reconnectTimeout.current);
+        }
+        
+        // Cleanup screen capture status
+        screenCaptureStatus.current = {};
+      };
     } else {
+      // Stop screen sharing for all users
       activeUsers.forEach((user) => {
-        socket.emit('hide-screen', {
-          deviceId: user.deviceId,
-        });
+        if (screenCaptureStatus.current[user.userId]) {
+          socket.emit('hide-screen', { deviceId: user.deviceId });
+          delete screenCaptureStatus.current[user.userId];
+        }
       });
     }
-  }, [showScreens]);
+  }, [socket, isConnected, showScreens, activeUsers, selectedSubject, toast]);
 
+  // Update screen data handler
   const handleScreenUpdate = useCallback(
-    (userId: string, screenData: string) => {
-      setStudentScreenState((prev) => ({
-        ...prev,
-        [userId]: {
-          screenData,
-        },
-      }));
+    (userId: string, screenData: string, timestamp: number) => {
+      if (!screenData) {
+        console.warn('Received empty screen data for user:', userId);
+        return;
+      }
+
+      console.log(
+        'Received screen update for user:',
+        userId,
+        'timestamp:',
+        timestamp,
+      );
+
+      if (
+        !screenUpdateTimestamps.current[userId] ||
+        timestamp > screenUpdateTimestamps.current[userId]
+      ) {
+        screenUpdateTimestamps.current[userId] = timestamp;
+
+        setStudentScreenState((prev) => ({
+          ...prev,
+          [userId]: {
+            screenData,
+            lastUpdate: timestamp,
+          },
+        }));
+      }
     },
     [],
   );
+
+  // Update socket event listeners
+  useEffect(() => {
+    if (!socket || !isConnected || !selectedSubject) return;
+
+    const handleScreenData = (data: {
+      userId: string;
+      screenData: string;
+      timestamp: number;
+    }) => {
+      console.log('Screen data received:', data);
+      handleScreenUpdate(data.userId, data.screenData, data.timestamp);
+    };
+
+    const handleScreenError = ({
+      error,
+      userId,
+    }: {
+      error: string;
+      userId: string;
+    }) => {
+      console.error('Screen share error:', error, 'for user:', userId);
+      toast({
+        title: 'Screen Share Error',
+        description: `Error capturing screen for student ${studentInfo[userId]?.firstName}: ${error}`,
+        variant: 'destructive',
+      });
+      setShowScreens(false);
+    };
+
+    socket.on('screen-data', handleScreenData);
+    socket.on('screen-share-error', handleScreenError);
+
+    return () => {
+      socket.off('screen-data', handleScreenData);
+      socket.off('screen-share-error', handleScreenError);
+    };
+  }, [
+    socket,
+    isConnected,
+    selectedSubject,
+    handleScreenUpdate,
+    studentInfo,
+    toast,
+  ]);
+
+  // Add stale screen checker
+  useEffect(() => {
+    if (!showScreens) return;
+
+    const checkStaleScreens = setInterval(() => {
+      const now = Date.now();
+      setStudentScreenState((prev) => {
+        const updated = { ...prev };
+        let hasChanges = false;
+
+        Object.entries(updated).forEach(([userId, state]) => {
+          const isStale = now - (lastScreenUpdateRef.current[userId] || 0) > 5000;
+          if (isStale && state.lastUpdate) {
+            hasChanges = true;
+            updated[userId] = {
+              ...state,
+              lastUpdate: undefined, // Mark as stale
+            };
+          }
+        });
+
+        return hasChanges ? updated : prev;
+      });
+    }, 1000);
+
+    return () => clearInterval(checkStaleScreens);
+  }, [showScreens]);
 
   const handleConfirmShareScreen = () => {
     setIsShareScreenDialogOpen(false);
@@ -845,12 +1284,311 @@ export const TeacherConsole = () => {
   };
 
   const toggleStudentSelection = (userId: string) => {
-    setSelectedStudents(prev => 
-      prev.includes(userId) 
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
+    setSelectedStudents((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId],
     );
   };
+
+  // Replace the file progress display with this component
+  const FileTransferProgress = () => {
+    if (Object.keys(fileTransfers).length === 0) return null;
+
+    return (
+      <div className="fixed bottom-4 right-4 max-w-md w-full bg-white rounded-lg shadow-lg p-4 space-y-2">
+        {transferQueue.length > 0 && (
+          <div className="text-sm text-gray-500 mb-2">
+            {transferQueue.length} file(s) queued
+          </div>
+        )}
+        {Object.entries(fileTransfers).map(([fileId, transfer]) => (
+          <div key={fileId} className="space-y-1">
+            <div className="flex justify-between text-sm">
+              <span className="font-medium truncate">{transfer.filename}</span>
+              <span className="text-gray-500">
+                {transfer.status === 'pending'
+                  ? 'Queued'
+                  : `${transfer.progress.toFixed(0)}%`}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  transfer.status === 'error'
+                    ? 'bg-red-500'
+                    : transfer.status === 'completed'
+                      ? 'bg-green-500'
+                      : transfer.status === 'pending'
+                        ? 'bg-gray-400'
+                        : 'bg-blue-500'
+                }`}
+                style={{ width: `${transfer.progress}%` }}
+              />
+            </div>
+            {transfer.status === 'error' && (
+              <p className="text-xs text-red-500">{transfer.error}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // Update file transfer handling to use notifications
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleFileProgress = ({
+      fileId,
+      filename,
+      progress,
+    }: {
+      fileId: string;
+      filename: string;
+      progress: number;
+    }) => {
+      setNotifications((prev) => {
+        const existing = prev.find((n) => n.type === 'file' && n.id === fileId);
+        if (existing && existing.type === 'file') {
+          return prev.map((n) =>
+            n.id === fileId && n.type === 'file'
+              ? { ...n, progress, status: 'uploading' as const }
+              : n,
+          );
+        }
+
+        const notification: FileNotification = {
+          id: fileId,
+          type: 'file',
+          title: 'Uploading File',
+          message: `Uploading "${filename}"...`,
+          time: new Date().toISOString(),
+          read: false,
+          status: 'uploading',
+          progress,
+          subjectName: selectedSubject?.name,
+        };
+
+        return [notification, ...prev];
+      });
+    };
+
+    const handleFileComplete = ({
+      fileId,
+      filename,
+      targetCount,
+    }: {
+      fileId: string;
+      filename: string;
+      targetCount: number;
+    }) => {
+      setNotifications((prev) => {
+        const updated = prev.map((n) =>
+          n.id === fileId && n.type === 'file'
+            ? {
+                ...n,
+                status: 'completed' as const,
+                progress: 100,
+                title: 'File Shared Successfully',
+                message: `"${filename}" shared with ${targetCount} student${targetCount !== 1 ? 's' : ''}`,
+              }
+            : n,
+        );
+        return updated;
+      });
+
+      setUnreadCount((prev) => prev + 1);
+
+      // Remove completed notification after 5 seconds
+      setTimeout(() => {
+        setNotifications((prev) => prev.filter((n) => n.id !== fileId));
+      }, 5000);
+    };
+
+    const handleFileError = ({
+      fileId,
+      error,
+      filename,
+    }: {
+      fileId: string;
+      error: string;
+      filename: string;
+    }) => {
+      setNotifications((prev) => {
+        const notification: FileNotification = {
+          id: fileId,
+          type: 'file',
+          title: 'File Share Failed',
+          message: `Failed to share "${filename}"`,
+          time: new Date().toISOString(),
+          read: false,
+          status: 'error',
+          error,
+          subjectName: selectedSubject?.name,
+        };
+
+        return [notification, ...prev.filter((n) => n.id !== fileId)];
+      });
+
+      setUnreadCount((prev) => prev + 1);
+    };
+
+    socket.on('file-progress', handleFileProgress);
+    socket.on('file-complete', handleFileComplete);
+    socket.on('file-error', handleFileError);
+
+    return () => {
+      socket.off('file-progress', handleFileProgress);
+      socket.off('file-complete', handleFileComplete);
+      socket.off('file-error', handleFileError);
+    };
+  }, [socket, selectedSubject?.name]);
+
+  const handleOpenFile = (filePath: string) => {
+    if (filePath) {
+      api.files.openFile(filePath);
+    }
+  };
+
+  // Add notification rendering function
+  const renderNotificationContent = (notification: Notification) => {
+    if (notification.type === 'file') {
+      return (
+        <div className="space-y-3">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm font-medium mb-1">{notification.title}</p>
+              <p className="text-sm text-gray-600">{notification.message}</p>
+              {notification.subjectName && (
+                <Badge variant="outline" className="mt-2">
+                  {notification.subjectName}
+                </Badge>
+              )}
+            </div>
+            <span className="text-xs text-gray-500 whitespace-nowrap ml-4">
+              {formatDistance(new Date(notification.time), new Date(), {
+                addSuffix: true,
+              })}
+            </span>
+          </div>
+
+          {notification.status === 'uploading' &&
+            notification.progress !== undefined && (
+              <div className="space-y-2">
+                <Progress value={notification.progress} className="h-2" />
+                <div className="flex justify-between items-center text-xs text-gray-500">
+                  <span>Uploading...</span>
+                  <span>{notification.progress.toFixed(0)}%</span>
+                </div>
+              </div>
+            )}
+
+          {notification.status === 'completed' && notification.filePath && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full mt-2"
+              onClick={() => handleOpenFile(notification.filePath)}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Open File
+            </Button>
+          )}
+
+          {notification.status === 'error' && notification.error && (
+            <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded-md">
+              <p className="text-xs text-red-600">{notification.error}</p>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Standard notification
+    return (
+      <div className="space-y-2">
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="text-sm font-medium mb-1">{notification.title}</p>
+            <p className="text-sm text-gray-600">{notification.message}</p>
+          </div>
+          <span className="text-xs text-gray-500 whitespace-nowrap ml-4">
+            {formatDistance(new Date(notification.time), new Date(), {
+              addSuffix: true,
+            })}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  // Update the notification dropdown content
+  const renderNotifications = () => (
+    <DropdownMenuContent align="end" className="w-[400px] bg-gray-50">
+      <div className="flex items-center justify-between px-6 py-4 border-b bg-white">
+        <div>
+          <h3 className="font-semibold text-lg">Notifications</h3>
+          <p className="text-sm text-gray-500">
+            Stay updated with your class activities
+          </p>
+        </div>
+        {notifications.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-blue-600 hover:text-blue-800"
+            onClick={() => {
+              setNotifications(
+                notifications.map((n) => ({ ...n, read: true })),
+              );
+              setUnreadCount(0);
+            }}
+          >
+            Mark all as read
+          </Button>
+        )}
+      </div>
+      <ScrollArea className="h-[600px]">
+        {notifications.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 px-4">
+            <Bell className="h-16 w-16 text-gray-300 mb-4" />
+            <p className="text-gray-600 font-medium text-lg">
+              No notifications yet
+            </p>
+            <p className="text-gray-400 text-sm mt-1">
+              New notifications will appear here
+            </p>
+          </div>
+        ) : (
+          <div className="p-2">
+            {notifications.map((notification) => (
+              <div
+                key={notification.id}
+                className={`px-4 py-4 mb-2 rounded-lg transition-all ${
+                  !notification.read
+                    ? 'bg-white border-l-4 border-blue-500 shadow-sm'
+                    : 'bg-white/60 hover:bg-white'
+                }`}
+                onClick={() => {
+                  if (!notification.read) {
+                    setUnreadCount(Math.max(0, unreadCount - 1));
+                    setNotifications(
+                      notifications.map((n) =>
+                        n.id === notification.id ? { ...n, read: true } : n,
+                      ),
+                    );
+                  }
+                }}
+              >
+                {renderNotificationContent(notification)}
+              </div>
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+    </DropdownMenuContent>
+  );
 
   return (
     <SidebarProvider>
@@ -989,6 +1727,19 @@ export const TeacherConsole = () => {
                 </div>
 
                 <div className="flex items-center space-x-4">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="relative">
+                        <Bell className="h-5 w-5 text-white" />
+                        {unreadCount > 0 && (
+                          <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-[#EBC42E] text-[10px] font-medium text-white flex items-center justify-center">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    {renderNotifications()}
+                  </DropdownMenu>
                   <Dialog
                     open={isProfileDialogOpen}
                     onOpenChange={setIsProfileDialogOpen}
@@ -1159,11 +1910,11 @@ export const TeacherConsole = () => {
                       <DropdownMenuItem onClick={handleShareFile}>
                         <FileUp className="h-4 w-4 mr-2" />
                         Share Files
-                        {selectedStudents.length > 0 && (
-                          <Badge variant="outline" className="ml-2">
-                            {selectedStudents.length} selected
-                          </Badge>
-                        )}
+                        <Badge variant="outline" className="ml-2">
+                          {selectedStudents.length > 0
+                            ? `${selectedStudents.length} selected`
+                            : 'All'}
+                        </Badge>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -1335,13 +2086,6 @@ export const TeacherConsole = () => {
               </div>
             </div>
           </div>
-          {fileProgress > 0 && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-75">
-              <p className="text-lg font-semibold text-blue-500">
-                Uploading... {fileProgress.toFixed(0)}%
-              </p>
-            </div>
-          )}
 
           <main className="px-4 sm:px-6 lg:px-8 py-4 relative h-[calc(100vh-8rem)] overflow-y-auto">
             {isLoading ? (
@@ -1470,9 +2214,14 @@ export const TeacherConsole = () => {
                 <TabsContent value="active">
                   <ScrollArea className="h-[calc(100vh-24rem)] rounded-md border p-2">
                     {activeUsers.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                        <Users className="h-12 w-12 mb-2" />
-                        <p>No active users</p>
+                      <div className="flex flex-col items-center justify-center h-[calc(100vh-28rem)]">
+                        <Users className="h-12 w-12 mb-2 text-gray-400" />
+                        <p className="text-gray-500 font-medium">
+                          No active users
+                        </p>
+                        <p className="text-sm text-gray-400">
+                          Students will appear here when they join the class
+                        </p>
                       </div>
                     ) : (
                       <div
@@ -1498,8 +2247,12 @@ export const TeacherConsole = () => {
                                 >
                                   <div className="flex items-center space-x-2">
                                     <Checkbox
-                                      checked={selectedStudents.includes(record.userId)}
-                                      onCheckedChange={() => toggleStudentSelection(record.userId)}
+                                      checked={selectedStudents.includes(
+                                        record.userId,
+                                      )}
+                                      onCheckedChange={() =>
+                                        toggleStudentSelection(record.userId)
+                                      }
                                     />
                                     <Avatar className="h-6 w-6">
                                       <AvatarFallback className="text-xs">
@@ -1618,6 +2371,28 @@ export const TeacherConsole = () => {
               handleConfirmShowScreens={handleConfirmShowScreens}
             />
           </main>
+          {globalFileProgress > 0 && (
+            <div className="fixed inset-0 flex items-center justify-center bg-black/10 backdrop-blur-sm z-50">
+              <div className="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full mx-4">
+                <div className="space-y-4">
+                  <p className="text-lg font-semibold text-center">
+                    Uploading Files...
+                  </p>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div
+                      className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                      style={{ width: `${globalFileProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-sm text-center text-gray-500">
+                    {globalFileProgress.toFixed(0)}% Complete
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          <FileTransferProgress />
+          <p className="mt-4 text-sm text-gray-600">Connecting to server...</p>
         </div>
       </div>
     </SidebarProvider>

@@ -9,7 +9,6 @@ export enum Config {
  * @enum
  */
 export enum WindowIdentifier {
-  Welcome = 'welcome_window',
   Main = 'main_window',
   Dashboard = 'dashboard_window',
   Down = 'down_window',
@@ -123,4 +122,9 @@ export enum IPCRoute {
 
   SCREEN_ID = '/screen/id',
   SCREEN_SHARE_STOP = '/screen/share-stop',
+
+  // New routes
+  GET_DOWNLOADS = 'get-downloads',
+  OPEN_DOWNLOADS_FOLDER = 'open-downloads-folder',
+  OPEN_FILE = 'open-file',
 }

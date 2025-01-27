@@ -376,6 +376,19 @@ export default {
   screen:{
     getScreenSourceId: () => ipcRenderer.invoke(IPCRoute.SCREEN_ID) as Promise<string>,
     stopScreenShare: () => ipcRenderer.send(IPCRoute.SCREEN_SHARE_STOP),
-  }
+  },
+  files: {
+    getDownloads: () => 
+      ipcRenderer.invoke(IPCRoute.GET_DOWNLOADS) as Promise<{
+        files: { name: string; path: string; subjectName: string; date: string }[];
+        subjects: string[];
+        isEmpty: boolean;
+        error?: string;
+      }>,
+    openDownloadsFolder: () => 
+      ipcRenderer.invoke(IPCRoute.OPEN_DOWNLOADS_FOLDER),
+    openFile: (filePath: string) => 
+      ipcRenderer.invoke(IPCRoute.OPEN_FILE, filePath),
+  },
 };
 

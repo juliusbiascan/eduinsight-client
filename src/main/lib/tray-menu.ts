@@ -5,13 +5,13 @@ let tray: Tray;
 let mainWindow: BrowserWindow;
 
 
-function showWindow() {
+export function showWindow() {
   mainWindow.maximize();
   mainWindow.show();
   mainWindow.focus();
 }
 
-function toggleWindow() {
+export function toggleWindow() {
   mainWindow = WindowManager.get(WindowManager.WINDOW_CONFIGS.dashboard_window.id);
   if (mainWindow.isVisible()) {
     mainWindow.hide();

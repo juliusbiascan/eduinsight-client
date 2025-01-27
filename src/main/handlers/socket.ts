@@ -18,7 +18,8 @@ export default function () {
   const labId = store.get('labId') as string;
 
   function setupSocketEventListeners(socket: Socket) {
-    let captureInterval: NodeJS.Timeout | null = null;
+    const TARGET_FPS = 10; // Limit to 10 FPS
+    const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
     socket.on('start-live-quiz', ({ quizId }) => {
       const quiz = WindowManager.get(WindowIdentifier.QuizPlayer);
@@ -28,12 +29,27 @@ export default function () {
     });
 
     socket.on('launch-webpage', ({ url }) => {
+      WindowManager.get(
+        WindowManager.WINDOW_CONFIGS.dashboard_window.id,
+      ).close();
       shell.openExternal(url);
     });
 
     socket.on(
       'upload-file-chunk',
-      ({ fileId, file, filename, subjectName, fileType }) => {
+      ({
+        fileId,
+        file,
+        filename,
+        subjectName,
+        fileType,
+      }: {
+        fileId: string;
+        file: Buffer;
+        filename: string;
+        subjectName: string;
+        fileType: string;
+      }) => {
         try {
           const downloadPath = path.join(
             app.getPath('downloads'),
@@ -46,17 +62,26 @@ export default function () {
           }
 
           const filePath = path.join(downloadPath, filename);
-          fs.writeFileSync(filePath, file);
 
-          // Notify success
-          BrowserWindow.getAllWindows().forEach((window) => {
-            window.webContents.send('file-received', {
-              fileId,
-              filename,
-              path: filePath,
-              subjectName,
-              fileType,
+          // Write file in chunks to avoid memory issues
+          const writeStream = fs.createWriteStream(filePath);
+          writeStream.write(file);
+          writeStream.end();
+
+          writeStream.on('finish', () => {
+            BrowserWindow.getAllWindows().forEach((window) => {
+              window.webContents.send('file-received', {
+                fileId,
+                filename,
+                path: filePath,
+                subjectName,
+                fileType,
+              });
             });
+          });
+
+          writeStream.on('error', (error) => {
+            throw new Error(`Failed to write file: ${error.message}`);
           });
         } catch (error) {
           console.error('Failed to save file:', error);
@@ -71,42 +96,118 @@ export default function () {
       },
     );
 
-    socket.on('file-progress', ({ fileId, filename, progress }) => {
-      BrowserWindow.getAllWindows().forEach((window) => {
-        window.webContents.send('file-progress', {
-          fileId,
-          filename,
-          progress,
+    socket.on(
+      'file-progress',
+      ({
+        fileId,
+        filename,
+        progress,
+        subjectName,
+      }: {
+        fileId: string;
+        filename: string;
+        progress: number;
+        subjectName: string;
+      }) => {
+        BrowserWindow.getAllWindows().forEach((window) => {
+          window.webContents.send(
+            'file-progress',
+            fileId,
+            filename,
+            progress,
+            subjectName,
+          );
         });
+      },
+    );
+
+    const captureIntervals: Record<string, NodeJS.Timeout> = {};
+    const MAX_RETRY_ATTEMPTS = 3;
+
+    socket.on('show-screen', async ({ userId, subjectId }) => {
+      // Clear existing interval if any
+      if (captureIntervals[userId]) {
+        clearInterval(captureIntervals[userId]);
+      }
+
+      let retryCount = 0;
+
+      const startCapture = async () => {
+        try {
+          const sources = await desktopCapturer.getSources({
+            types: ['screen'],
+            thumbnailSize: {
+              width: 854,
+              height: 480,
+            },
+            fetchWindowIcons: false,
+          });
+
+          if (!sources[0]) {
+            throw new Error('No screen source available');
+          }
+
+          captureIntervals[userId] = setInterval(async () => {
+            try {
+              if (!socket.connected) {
+                clearInterval(captureIntervals[userId]);
+                return;
+              }
+
+              const thumbnail = sources[0].thumbnail.toDataURL({
+                scaleFactor: 0.5,
+              });
+
+              socket.emit('screen-data', {
+                userId,
+                subjectId,
+                screenData: thumbnail,
+                timestamp: Date.now(),
+              });
+
+              // Reset retry count on successful capture
+              retryCount = 0;
+            } catch (error) {
+              console.error('Screen capture error:', error);
+              retryCount++;
+
+              if (retryCount >= MAX_RETRY_ATTEMPTS) {
+                clearInterval(captureIntervals[userId]);
+                socket.emit('screen-share-error', {
+                  error: 'Screen capture failed',
+                  userId,
+                  subjectId,
+                });
+              }
+            }
+          }, FRAME_INTERVAL);
+        } catch (error) {
+          console.error('Failed to initialize screen capture:', error);
+          socket.emit('screen-share-error', {
+            error: 'Failed to initialize screen capture',
+            userId,
+            subjectId,
+          });
+        }
+      };
+
+      await startCapture();
+    });
+
+    socket.on('hide-screen', ({ _deviceId }) => {
+      // Clear all intervals for the device
+      Object.keys(captureIntervals).forEach((userId) => {
+        clearInterval(captureIntervals[userId]);
+        delete captureIntervals[userId];
       });
     });
 
-    socket.on('show-screen', ({ _deviceId, userId, subjectId }) => {
-      if (captureInterval) clearInterval(captureInterval);
-
-      captureInterval = setInterval(() => {
-        desktopCapturer
-          .getSources({
-            types: ['screen'],
-            thumbnailSize: { width: 1280, height: 720 },
-          })
-          .then(async (sources) => {
-            socket.emit('screen-data', {
-              userId,
-              subjectId,
-              screenData: sources[0].thumbnail.toDataURL(),
-            });
-          })
-          .catch((error) => console.error('Error capturing screen:', error));
-      }, 100);
-    });
-
-    socket.on('hide-screen', () => {
-      console.log('Stop sharing event received');
-      if (captureInterval) {
-        clearInterval(captureInterval);
-        captureInterval = null;
-      }
+    // Cleanup on socket disconnect
+    socket.on('disconnect', () => {
+      Object.keys(captureIntervals).forEach((userId) => {
+        clearInterval(captureIntervals[userId]);
+        delete captureIntervals[userId];
+      });
     });
   }
 
@@ -117,6 +218,7 @@ export default function () {
   //handle device initiated event
   ipcMain.on(IPCRoute.DEVICE_INITIATED, async () => {
     createSocketConnection().then(async (socket) => {
+      
       const device = await Database.prisma.device.findFirst({
         where: { id: deviceId },
       });
@@ -134,11 +236,18 @@ export default function () {
       });
 
       if (activeUser) {
-        store.set('userId', activeUser.userId);
         startMonitoring(activeUser.userId, device.id, labId);
         createTray(path.join(__dirname, 'img/tray-icon.ico'));
-        WindowManager.get(WindowManager.WINDOW_CONFIGS.welcome_window.id);
-        WindowManager.get(WindowManager.WINDOW_CONFIGS.main_window.id).close();
+
+        const dashboard = WindowManager.get(
+          WindowManager.WINDOW_CONFIGS.dashboard_window.id,
+        );
+
+        dashboard.maximize();
+        dashboard.show();
+        dashboard.focus();
+
+        store.set('userId', activeUser.userId);
       } else {
         store.delete('userId');
         WindowManager.get(WindowManager.WINDOW_CONFIGS.main_window.id);

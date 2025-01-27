@@ -1,5 +1,12 @@
 import logo from '@/renderer/assets/passlogo-small.png';
-import { Device, DeviceUser, Quiz, QuizRecord, Subject, DeviceUserRole } from '@prisma/client';
+import {
+  Device,
+  DeviceUser,
+  Quiz,
+  QuizRecord,
+  Subject,
+  DeviceUserRole,
+} from '@prisma/client';
 import { useToast } from '../../../hooks/use-toast';
 import {
   LogOut,
@@ -10,6 +17,11 @@ import {
   Folders,
   Settings2Icon,
   Trash2Icon,
+  Download,
+  FileDown,
+  AlertCircle,
+  Folder,
+  Bell,
 } from 'lucide-react';
 import { Toaster } from '../../../components/ui/toaster';
 import { useState, useEffect, useCallback } from 'react';
@@ -29,7 +41,6 @@ import { Badge } from '../../../components/ui/badge';
 import { Label } from '@/renderer/components/ui/label';
 import { WindowIdentifier } from '@/shared/constants';
 
-
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,8 +59,46 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/renderer/components/ui/alert-dialog';
+import { Progress } from '@/renderer/components/ui/progress';
 //import Peer from 'simple-peer';
 import { useNavigate } from 'react-router-dom';
+import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import { formatDistance } from 'date-fns/formatDistance';
+
+interface FileNotification {
+  id: string;
+  type: 'file';
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+  status: 'downloading' | 'completed' | 'error';
+  progress?: number;
+  path?: string;
+  subjectName?: string;
+  error?: string;
+  filePath?: string;  // Add this new property
+}
+
+interface StandardNotification {
+  id: string;
+  type: 'standard';
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+}
+
+type Notification = FileNotification | StandardNotification;
+
+interface FileTransfer {
+  id: string;
+  filename: string;
+  progress: number;
+  status: 'downloading' | 'completed' | 'error';
+  subjectName?: string;
+  error?: string;
+}
 
 export const StudentConsole = () => {
   const { toast } = useToast();
@@ -74,6 +123,36 @@ export const StudentConsole = () => {
   const [isLeavingSubject, setIsLeavingSubject] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
+  const [isDownloadsOpen, setIsDownloadsOpen] = useState(false);
+  const [downloads, setDownloads] = useState<{
+    files: { name: string; path: string; subjectName: string; date: string }[];
+    subjects: string[];
+    isEmpty: boolean;
+    error?: string;
+  }>({ files: [], subjects: [], isEmpty: true });
+
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [fileTransfers, setFileTransfers] = useState<Record<string, FileTransfer>>({});
+
+  const fetchDownloads = useCallback(async () => {
+    const result = await api.files.getDownloads();
+    setDownloads(result);
+  }, []);
+
+  const openDownloadsFolder = () => {
+    api.window.close(WindowIdentifier.Dashboard);
+    api.files.openDownloadsFolder();
+  };
+
+  const openFile = (filePath: string) => {
+    api.files.openFile(filePath);
+  };
+
+  useEffect(() => {
+    fetchDownloads();
+  }, [fetchDownloads]);
+
   //const [screenSharing, setScreenSharing] = useState(false);
 
   //const videoRef = useRef<HTMLVideoElement>(null);
@@ -82,11 +161,14 @@ export const StudentConsole = () => {
     const validateAccess = async () => {
       try {
         const device = await api.database.getDevice();
-        const activeUser = await api.database.getActiveUserByDeviceId(device.id, device.labId);
-        
+        const activeUser = await api.database.getActiveUserByDeviceId(
+          device.id,
+          device.labId,
+        );
+
         if (!activeUser || activeUser.user.role !== DeviceUserRole.STUDENT) {
           navigate('/');
-         
+
           window.close();
         }
       } catch (error) {
@@ -189,6 +271,139 @@ export const StudentConsole = () => {
       mounted = false;
     };
   }, [user, socket, isConnected, fetchSubjects]);
+
+  useEffect(() => {
+    api.window.receive(
+      'file-received',
+      (event, fileId: string, filename, path, subjectName) => {
+        const notification: FileNotification = {
+          id: fileId,
+          type: 'file',
+          title: 'File Downloaded',
+          message: filename,
+          time: new Date().toISOString(),
+          read: false,
+          status: 'completed',
+          filePath: path,  // Store the file path
+          subjectName
+        };
+
+        setNotifications(prev => [notification, ...prev]);
+        setUnreadCount(prev => prev + 1);
+
+      },
+    );
+
+    api.window.receive(
+      'file-receive-error',
+      (event, fileId, filename, error) => {
+        const notification: FileNotification = {
+          id: fileId as string,
+          type: 'file',
+          title: 'Download Failed',
+          message: filename as string,
+          time: new Date().toISOString(),
+          read: false,
+          status: 'error',
+          error: error as string
+        };
+
+        setNotifications(prev => [notification, ...prev]);
+        setUnreadCount(prev => prev + 1);
+
+        toast({
+          title: 'Download Failed',
+          description: `Failed to download ${filename}: ${error}`,
+          variant: 'destructive',
+        });
+      },
+    );
+
+    api.window.receive(
+      'file-progress',
+      (event, fileId: string, filename: string, progress: number, subjectName: string) => {
+        setNotifications(prev => {
+          const existing = prev.find(n => n.type === 'file' && n.id === fileId);
+          if (existing && existing.type === 'file') {
+            return prev.map(n => 
+              n.id === fileId && n.type === 'file'
+                ? { ...n, progress, status: 'downloading' as const }
+                : n
+            );
+          }
+          
+          const notification: FileNotification = {
+            id: fileId,
+            type: 'file',
+            title: 'Downloading File',
+            message: filename,
+            time: new Date().toISOString(),
+            read: false,
+            status: 'downloading',
+            progress,
+            subjectName
+          };
+          
+          return [notification, ...prev];
+        });
+      },
+    );
+  }, [selectedSubject]);
+
+  useEffect(() => {
+    api.window.receive(
+      'file-progress',
+      (event, fileId: string, filename: string, progress: number, subjectName: string) => {
+        setFileTransfers(prev => ({
+          ...prev,
+          [fileId]: {
+            id: fileId,
+            filename,
+            progress,
+            status: 'downloading',
+            subjectName
+          }
+        }));
+      },
+    );
+
+    api.window.receive(
+      'file-received',
+      (event, fileId: string) => {
+        setFileTransfers(prev => ({
+          ...prev,
+          [fileId]: {
+            ...prev[fileId],
+            status: 'completed',
+            progress: 100
+          }
+        }));
+
+        // Remove the transfer after a delay
+        setTimeout(() => {
+          setFileTransfers(prev => {
+            const newTransfers = { ...prev };
+            delete newTransfers[fileId];
+            return newTransfers;
+          });
+        }, 3000);
+      },
+    );
+
+    api.window.receive(
+      'file-receive-error',
+      (event, fileId: string, filename: string, error: string) => {
+        setFileTransfers(prev => ({
+          ...prev,
+          [fileId]: {
+            ...prev[fileId],
+            status: 'error',
+            error
+          }
+        }));
+      },
+    );
+  }, []);
 
   // useEffect(() => {
   //   if (!socket || !isConnected || !user) return;
@@ -331,7 +546,7 @@ export const StudentConsole = () => {
 
     const subject = subjects.find((s) => s.id.toString() === value);
     setSelectedSubject(subject || null);
-    
+
     if (subject) {
       socket.emit('join-subject', {
         userId: user.id,
@@ -419,6 +634,341 @@ export const StudentConsole = () => {
   const handleMinimizeWindow = () => {
     api.window.hide(WindowIdentifier.Dashboard);
   };
+
+  const handleOpenFile = (filePath: string) => {
+    if (filePath) {
+      api.files.openFile(filePath);
+    }
+  };
+
+  const renderNotificationContent = (notification: Notification) => {
+    if (notification.type === 'file') {
+      return (
+        <div className="space-y-3">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm font-medium mb-1">{notification.title}</p>
+              <p className="text-sm text-gray-600">{notification.message}</p>
+              {notification.subjectName && (
+                <Badge variant="outline" className="mt-2">
+                  {notification.subjectName}
+                </Badge>
+              )}
+            </div>
+            <span className="text-xs text-gray-500 whitespace-nowrap ml-4">
+              {formatDistance(new Date(notification.time), new Date(), { addSuffix: true })}
+            </span>
+          </div>
+
+          {notification.status === 'downloading' && notification.progress !== undefined && (
+            <div className="space-y-2">
+              <Progress value={notification.progress} className="h-2" />
+              <div className="flex justify-between items-center text-xs text-gray-500">
+                <span>Downloading...</span>
+                <span>{notification.progress.toFixed(0)}%</span>
+              </div>
+            </div>
+          )}
+
+          {notification.status === 'completed' && notification.filePath && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full mt-2 flex items-center justify-center"
+              onClick={() => notification.filePath && handleOpenFile(notification.filePath)}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Open File
+            </Button>
+          )}
+
+          {notification.status === 'error' && notification.error && (
+            <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded-md">
+              <p className="text-xs text-red-600">{notification.error}</p>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Standard notification
+    return (
+      <div className="space-y-2">
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="text-sm font-medium mb-1">{notification.title}</p>
+            <p className="text-sm text-gray-600">{notification.message}</p>
+          </div>
+          <span className="text-xs text-gray-500 whitespace-nowrap ml-4">
+            {formatDistance(new Date(notification.time), new Date(), { addSuffix: true })}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderNotifications = () => (
+    <DropdownMenuContent align="end" className="w-[400px] bg-gray-50">
+      <div className="flex items-center justify-between px-6 py-4 border-b bg-white">
+        <div>
+          <h3 className="font-semibold text-lg">Notifications</h3>
+          <p className="text-sm text-gray-500">Stay updated with your class activities</p>
+        </div>
+        {notifications.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-blue-600 hover:text-blue-800"
+            onClick={() => {
+              setNotifications(notifications.map(n => ({ ...n, read: true })));
+              setUnreadCount(0);
+            }}
+          >
+            Mark all as read
+          </Button>
+        )}
+      </div>
+      <ScrollArea className="h-[600px]">
+        {notifications.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 px-4">
+            <Bell className="h-16 w-16 text-gray-300 mb-4" />
+            <p className="text-gray-600 font-medium text-lg">No notifications yet</p>
+            <p className="text-gray-400 text-sm mt-1">New notifications will appear here</p>
+          </div>
+        ) : (
+          <div className="p-2">
+            {notifications.map((notification) => (
+              <div
+                key={notification.id}
+                className={`px-4 py-4 mb-2 rounded-lg transition-all ${
+                  !notification.read 
+                    ? 'bg-white border-l-4 border-blue-500 shadow-sm' 
+                    : 'bg-white/60 hover:bg-white'
+                }`}
+                onClick={() => {
+                  if (!notification.read) {
+                    setUnreadCount(Math.max(0, unreadCount - 1));
+                    setNotifications(
+                      notifications.map(n =>
+                        n.id === notification.id ? { ...n, read: true } : n
+                      )
+                    );
+                  }
+                }}
+              >
+                {renderNotificationContent(notification)}
+              </div>
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+    </DropdownMenuContent>
+  );
+
+  const renderDownloadsButton = () => (
+    <Dialog open={isDownloadsOpen} onOpenChange={setIsDownloadsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="relative">
+          <Folder className="h-4 w-4" />
+          <span className="sr-only">Downloads</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle>Downloaded Files</DialogTitle>
+          <DialogDescription>
+            Access your downloaded course materials and resources
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[60vh] overflow-y-auto mt-4">
+          {downloads.error ? (
+            <div className="text-center py-8">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-500" />
+              <p className="text-red-600">Error loading files: {downloads.error}</p>
+            </div>
+          ) : downloads.isEmpty ? (
+            <div className="text-center py-8">
+              <Folder className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <p className="text-gray-500 font-medium">No Files Found</p>
+              <p className="text-gray-400 text-sm mt-1">
+                Downloaded files will appear here
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {downloads.subjects.map((subject) => (
+                <div key={subject} className="space-y-2">
+                  <h3 className="font-medium text-sm text-gray-900">{subject}</h3>
+                  <div className="space-y-2">
+                    {downloads.files
+                      .filter((file) => file.subjectName === subject)
+                      .map((file) => (
+                        <div
+                          key={file.path}
+                          className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <FileDown className="h-4 w-4 text-blue-600" />
+                            <div>
+                              <p className="text-sm font-medium">{file.name}</p>
+                              <p className="text-xs text-gray-500">
+                                {new Date(file.date).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openFile(file.path)}
+                          >
+                            <Download className="h-4 w-4" />
+                            <span className="sr-only">Open file</span>
+                          </Button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button 
+            variant="outline" 
+            onClick={openDownloadsFolder}
+            className="w-full sm:w-auto"
+          >
+            Open Downloads Folder
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  const renderSubjectMaterials = () => (
+    <div className="bg-white rounded-xl shadow-sm mt-6">
+      <div className="p-6 border-b">
+        <h2 className="text-lg font-semibold">Subject Materials</h2>
+        <p className="text-sm text-gray-500">Access your downloaded files and resources</p>
+      </div>
+
+      <div className="p-6">
+        {downloads.error ? (
+          <div className="text-center py-8">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-500" />
+            <p className="text-red-600">Error loading files: {downloads.error}</p>
+          </div>
+        ) : !downloads.files.some(file => 
+            (!selectedSubject || file.subjectName === selectedSubject.name)
+          ) ? (
+          <div className="text-center py-8 text-gray-500">
+            <FileDown className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+            <p className="font-medium">No Files Found</p>
+            <p className="text-sm text-gray-400 mt-1">
+              {selectedSubject 
+                ? `No files downloaded for ${selectedSubject.name} yet`
+                : 'Select a subject to view its files'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {downloads.files
+              .filter(file => (!selectedSubject || file.subjectName === selectedSubject.name))
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+              .map((file) => (
+                <div
+                  key={file.path}
+                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className="p-2 bg-blue-50 rounded-full">
+                      <FileDown className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-900">{file.name}</h4>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <Badge variant="outline" className="text-xs">
+                          {file.subjectName}
+                        </Badge>
+                        <span className="text-xs text-gray-500">
+                          {new Date(file.date).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openFile(file.path)}
+                    className="ml-4"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span className="sr-only">Open file</span>
+                  </Button>
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Add FileTransferProgress component
+  const FileTransferProgress = () => {
+    const transfers = Object.values(fileTransfers).filter(
+      transfer => transfer.status === 'downloading'
+    );
+
+    if (transfers.length === 0) return null;
+
+    return (
+      <div className="fixed bottom-4 right-4 w-[400px] bg-white rounded-lg shadow-lg z-50 border border-gray-200">
+        <div className="p-4 border-b bg-gray-50">
+          <div className="flex justify-between items-center">
+            <h3 className="font-semibold text-sm">Downloads</h3>
+            <span className="text-xs text-gray-500">
+              {transfers.length} {transfers.length === 1 ? 'file' : 'files'} downloading
+            </span>
+          </div>
+        </div>
+        <div className="max-h-[300px] overflow-y-auto">
+          {transfers.map((transfer) => (
+            <div key={transfer.id} className="p-4 border-b last:border-b-0">
+              <div className="flex justify-between items-start mb-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{transfer.filename}</p>
+                  {transfer.subjectName && (
+                    <p className="text-xs text-gray-500">
+                      From: {transfer.subjectName}
+                    </p>
+                  )}
+                </div>
+                <span className="text-xs font-medium text-gray-500 ml-2">
+                  {transfer.progress.toFixed(0)}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    transfer.status === 'error'
+                      ? 'bg-red-500'
+                      : transfer.status === 'completed'
+                      ? 'bg-green-500'
+                      : 'bg-blue-500'
+                  }`}
+                  style={{ width: `${transfer.progress}%` }}
+                />
+              </div>
+              {transfer.error && (
+                <p className="text-xs text-red-500 mt-1">{transfer.error}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#F5F5F7]">
       {/* Simplified Header */}
@@ -428,29 +978,46 @@ export const StudentConsole = () => {
             <div className="flex items-center space-x-4">
               <img src={logo} alt="PASS College Logo" className="h-8 w-auto" />
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">EduInsight</h1>
+                <h1 className="text-xl font-semibold text-gray-900">
+                  EduInsight
+                </h1>
                 <p className="text-sm text-gray-500">Student Console</p>
               </div>
             </div>
 
             <div className="flex items-center space-x-4">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={handleMinimizeWindow}
-                className="text-gray-600 hover:text-gray-900"
-              >
-                <Minimize2 className="h-4 w-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="relative">
+                    <Bell className="h-4 w-4" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-600 text-[10px] font-medium text-white flex items-center justify-center">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                {renderNotifications()}
+              </DropdownMenu>
+              
               <Button variant="ghost" size="sm" onClick={handleRefresh}>
                 <RefreshCw className="h-4 w-4" />
               </Button>
-              
-              <Dialog open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen}>
+              {renderDownloadsButton()}
+              <Dialog
+                open={isProfileDialogOpen}
+                onOpenChange={setIsProfileDialogOpen}
+              >
                 <DialogTrigger asChild>
-                  <Button variant="ghost" className="flex items-center space-x-2">
+                  <Button
+                    variant="ghost"
+                    className="flex items-center space-x-2"
+                  >
                     <Avatar className="h-8 w-8">
-                      <AvatarFallback>{user?.firstName[0]}{user?.lastName[0]}</AvatarFallback>
+                      <AvatarFallback>
+                        {user?.firstName[0]}
+                        {user?.lastName[0]}
+                      </AvatarFallback>
                     </Avatar>
                   </Button>
                 </DialogTrigger>
@@ -478,22 +1045,36 @@ export const StudentConsole = () => {
                         </h3>
                         <div className="space-y-2">
                           <div className="flex justify-between">
-                            <span className="text-sm text-gray-600">Full Name:</span>
+                            <span className="text-sm text-gray-600">
+                              Full Name:
+                            </span>
                             <span className="text-sm font-medium">
                               {user?.firstName} {user?.lastName}
                             </span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-sm text-gray-600">Student ID:</span>
-                            <span className="text-sm font-medium">{user?.schoolId}</span>
+                            <span className="text-sm text-gray-600">
+                              Student ID:
+                            </span>
+                            <span className="text-sm font-medium">
+                              {user?.schoolId}
+                            </span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-sm text-gray-600">Course:</span>
-                            <span className="text-sm font-medium">{user?.course}</span>
+                            <span className="text-sm text-gray-600">
+                              Course:
+                            </span>
+                            <span className="text-sm font-medium">
+                              {user?.course}
+                            </span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-sm text-gray-600">Year Level:</span>
-                            <span className="text-sm font-medium">{user?.yearLevel}</span>
+                            <span className="text-sm text-gray-600">
+                              Year Level:
+                            </span>
+                            <span className="text-sm font-medium">
+                              {user?.yearLevel}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -505,11 +1086,17 @@ export const StudentConsole = () => {
                         </h3>
                         <div className="space-y-2">
                           <div className="flex justify-between">
-                            <span className="text-sm text-gray-600">Enrolled Subjects:</span>
-                            <span className="text-sm font-medium">{subjects.length}</span>
+                            <span className="text-sm text-gray-600">
+                              Enrolled Subjects:
+                            </span>
+                            <span className="text-sm font-medium">
+                              {subjects.length}
+                            </span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-sm text-gray-600">Active Subject:</span>
+                            <span className="text-sm text-gray-600">
+                              Active Subject:
+                            </span>
                             <span className="text-sm font-medium">
                               {selectedSubject?.name || 'None'}
                             </span>
@@ -537,6 +1124,14 @@ export const StudentConsole = () => {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleMinimizeWindow}
+                className="text-gray-600 hover:text-gray-900"
+              >
+                <Minimize2 className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>
@@ -568,7 +1163,7 @@ export const StudentConsole = () => {
                   </div>
                 </button>
               ))}
-              
+
               <Button
                 variant="outline"
                 className="w-full justify-start"
@@ -586,8 +1181,12 @@ export const StudentConsole = () => {
           {selectedSubject && (
             <div className="flex justify-between items-center mb-6">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">{selectedSubject.name}</h2>
-                <p className="text-sm text-gray-500">Subject Code: {selectedSubject.subjectCode}</p>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  {selectedSubject.name}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Subject Code: {selectedSubject.subjectCode}
+                </p>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -599,13 +1198,17 @@ export const StudentConsole = () => {
                     <span>Settings</span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent 
-                  className="w-56 bg-white border rounded-md shadow-md animate-in fade-in-80 z-50" 
+                <DropdownMenuContent
+                  className="w-56 bg-white border rounded-md shadow-md animate-in fade-in-80 z-50"
                   align="end"
                 >
                   <div className="px-2 py-1.5 border-b">
-                    <p className="text-sm font-medium text-gray-900">Subject Options</p>
-                    <p className="text-xs text-gray-500">Manage your subject settings</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      Subject Options
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Manage your subject settings
+                    </p>
                   </div>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -623,7 +1226,9 @@ export const StudentConsole = () => {
                           Leave {selectedSubject.name}
                         </AlertDialogTitle>
                         <AlertDialogDescription className="text-gray-500">
-                          Are you sure you want to leave this subject? Your quiz records will be kept for reference, but you'll need to rejoin to access the subject again.
+                          Are you sure you want to leave this subject? Your quiz
+                          records will be kept for reference, but you'll need to
+                          rejoin to access the subject again.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter className="gap-2">
@@ -682,23 +1287,29 @@ export const StudentConsole = () => {
               {/* Subject Overview */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-6 rounded-xl shadow-sm">
-                  <h3 className="text-sm font-medium text-gray-500 mb-1">Quizzes</h3>
+                  <h3 className="text-sm font-medium text-gray-500 mb-1">
+                    Quizzes
+                  </h3>
                   <p className="text-2xl font-bold text-[#C9121F]">
-                    {selectedSubject.quizzes.filter(q => q.published).length}
+                    {selectedSubject.quizzes.filter((q) => q.published).length}
                   </p>
                   <p className="text-sm text-gray-600">Available</p>
                 </div>
-                
+
                 <div className="bg-white p-6 rounded-xl shadow-sm">
-                  <h3 className="text-sm font-medium text-gray-500 mb-1">Completed</h3>
+                  <h3 className="text-sm font-medium text-gray-500 mb-1">
+                    Completed
+                  </h3>
                   <p className="text-2xl font-bold text-green-600">
                     {calculateProgress().quizzes}
                   </p>
                   <p className="text-sm text-gray-600">Quizzes Done</p>
                 </div>
-                
+
                 <div className="bg-white p-6 rounded-xl shadow-sm">
-                  <h3 className="text-sm font-medium text-gray-500 mb-1">Progress</h3>
+                  <h3 className="text-sm font-medium text-gray-500 mb-1">
+                    Progress
+                  </h3>
                   <p className="text-2xl font-bold text-blue-600">
                     {calculateProgress().overall}%
                   </p>
@@ -711,14 +1322,16 @@ export const StudentConsole = () => {
                 <div className="p-6 border-b">
                   <h2 className="text-lg font-semibold">Available Quizzes</h2>
                 </div>
-                
+
                 <div className="p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {selectedSubject.quizzes
                       .filter((quiz) => quiz.published)
                       .map((quiz) => {
                         const quizRecord = selectedSubject.quizRecord.find(
-                          (record) => record.quizId === quiz.id && record.userId === user?.id
+                          (record) =>
+                            record.quizId === quiz.id &&
+                            record.userId === user?.id,
                         );
                         const isQuizDone = !!quizRecord;
 
@@ -729,14 +1342,17 @@ export const StudentConsole = () => {
                           >
                             <div className="flex justify-between items-start mb-4">
                               <h3 className="font-medium">{quiz.title}</h3>
-                              <Badge variant={isQuizDone ? 'success' : 'outline'}>
+                              <Badge
+                                variant={isQuizDone ? 'success' : 'outline'}
+                              >
                                 {isQuizDone ? 'Completed' : 'Not Started'}
                               </Badge>
                             </div>
-                            
+
                             {isQuizDone ? (
                               <div className="text-sm text-gray-600">
-                                Score: {quizRecord.score}/{quizRecord.totalPoints}
+                                Score: {quizRecord.score}/
+                                {quizRecord.totalPoints}
                               </div>
                             ) : (
                               quiz.visibility === 'public' && (
@@ -755,6 +1371,9 @@ export const StudentConsole = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Subject Materials */}
+              {renderSubjectMaterials()}
             </div>
           )}
         </main>
@@ -764,12 +1383,15 @@ export const StudentConsole = () => {
       <Dialog open={isJoinDialogOpen} onOpenChange={setIsJoinDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle className="text-xl font-semibold text-gray-900">Join a Subject</DialogTitle>
+            <DialogTitle className="text-xl font-semibold text-gray-900">
+              Join a Subject
+            </DialogTitle>
             <DialogDescription className="text-gray-500">
-              Enter the subject code provided by your teacher to join a new subject.
+              Enter the subject code provided by your teacher to join a new
+              subject.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="py-6">
             <div className="space-y-4">
               <div className="space-y-2">
@@ -793,8 +1415,8 @@ export const StudentConsole = () => {
             >
               Cancel
             </Button>
-            <Button 
-              onClick={handleJoinSubject} 
+            <Button
+              onClick={handleJoinSubject}
               disabled={isJoining}
               className="w-full sm:w-auto"
             >
@@ -810,8 +1432,10 @@ export const StudentConsole = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
+
       <Toaster />
+      {/* Add FileTransferProgress at the end of the component */}
+      <FileTransferProgress />
     </div>
   );
 };

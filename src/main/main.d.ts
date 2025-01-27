@@ -2,8 +2,6 @@
 // plugin that tells the Electron app where to look for the Webpack-bundled app code (depending on
 // whether you're running in development or production).
 
-declare const WELCOME_WINDOW_WEBPACK_ENTRY: string;
-declare const WELCOME_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 declare const SETUP_WINDOW_WEBPACK_ENTRY: string;
@@ -14,5 +12,3 @@ declare const DASHBOARD_WINDOW_WEBPACK_ENTRY: string;
 declare const DASHBOARD_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 declare const QUIZ_PLAYER_WINDOW_WEBPACK_ENTRY: string;
 declare const QUIZ_PLAYER_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
-declare const SCREEN_WINDOW_WEBPACK_ENTRY: string;
-declare const SCREEN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;

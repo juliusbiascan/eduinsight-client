@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { WindowIdentifier } from '@/shared/constants';
 import ElectronShutdownHandler from '@paymoapp/electron-shutdown-handler';
 import { machineIdSync } from 'node-machine-id';
@@ -88,40 +88,7 @@ const windows: Record<string, Electron.BrowserWindow> = {};
  * @constant
  */
 const WINDOW_CONFIGS: Record<string, WindowConfig> = {
-  [WindowIdentifier.Welcome]: {
-    id: WindowIdentifier.Welcome,
-    url: WELCOME_WINDOW_WEBPACK_ENTRY,
-    options: {
-      title: 'Welcome',
-      ...baseWindowConfig,
-      width: 600,
-      height: 200,
-      useContentSize: true,
-      show: false,
-      frame: false,
-      resizable: false,
-      alwaysOnTop: true,
-      transparent: true,
-      skipTaskbar: true,
-    },
-  },
-  [WindowIdentifier.Screen]: {
-    id: WindowIdentifier.Screen,
-    url: SCREEN_WINDOW_PRELOAD_WEBPACK_ENTRY,
-    options: {
-      title: 'Screen Monitoring',
-      ...baseWindowConfig,
-      width: 600,
-      height: 200,
-      useContentSize: true,
-      show: false,
-      frame: false,
-      resizable: false,
-      alwaysOnTop: true,
-      transparent: true,
-      skipTaskbar: true,
-    },
-  },
+
   [WindowIdentifier.Main]: {
     id: WindowIdentifier.Main,
     url: MAIN_WINDOW_WEBPACK_ENTRY,
@@ -154,10 +121,8 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
     id: WindowIdentifier.Splash,
     url: SPLASH_WINDOW_WEBPACK_ENTRY,
     options: {
-      ...sharedWindowConfigs.frameless,
+      ...kioskWindowConfig,
       title: 'Splash',
-      width: 400,
-      height: 400,
     },
   },
   [WindowIdentifier.Dashboard]: {
@@ -229,56 +194,7 @@ function create(
     }else  if(input.code == "F11") event.preventDefault();
   });
 
-  if (id === WindowIdentifier.Welcome || id === WindowIdentifier.Screen) {
-    window.webContents.on('did-finish-load', () => {
-      const windowBounds = window.getBounds();
-      const workAreaSize = screen.getPrimaryDisplay().workAreaSize;
-
-      // Position window in the bottom-right corner of the screen
-      const x = workAreaSize.width - windowBounds.width - 20;
-      const y = workAreaSize.height - windowBounds.height - 20;
-
-      window.setPosition(x, y, false);
-      window.show();
-      window.focus();
-      window.setOpacity(0);
-      fadeIn();
-    });
-
-    const fadeIn = () => {
-      let opacity = 0;
-      const fadeInterval = setInterval(() => {
-        if (opacity < 1) {
-          opacity += 0.1;
-          window.setOpacity(opacity);
-        } else {
-          clearInterval(fadeInterval);
-        }
-      }, 50);
-    };
-
-    const fadeOut = (callback: () => void) => {
-      let opacity = 1;
-      const fadeInterval = setInterval(() => {
-        if (opacity > 0) {
-          opacity -= 0.1;
-          window.setOpacity(opacity);
-        } else {
-          clearInterval(fadeInterval);
-          callback();
-        }
-      }, 50);
-    };
-
-    setTimeout(() => {
-      if (window) {
-        fadeOut(() => {
-          window.close();
-        });
-      }
-    }, 5000); // Increased display time to 5 seconds
-  }
-
+  
   if (id === WindowIdentifier.Setup) {
     window.once('ready-to-show', () => {
       window.show();
