@@ -199,7 +199,7 @@ export const DeviceSetup: React.FC = () => {
         setTimeout(() => {
           setStatus(null);
           api.window.closeSetup();
-          api.window.open(WindowIdentifier.Splash);
+          api.window.open(WindowIdentifier.Main);
         }, 1000);
       })
       .catch((error) => {

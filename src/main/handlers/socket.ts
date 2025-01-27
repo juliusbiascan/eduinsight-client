@@ -228,8 +228,10 @@ export default function () {
       }
 
       //setup socket event listeners
-      setupSocketEventListeners(socket);
       socket.emit('join-server', device.id);
+      
+      setupSocketEventListeners(socket);
+      
 
       const activeUser = await Database.prisma.activeDeviceUser.findFirst({
         where: { deviceId: device.id },

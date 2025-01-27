@@ -18,6 +18,7 @@ const LoginPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [formErrors, setFormErrors] = useState<{email?: string; password?: string}>({});
 
   useEffect(() => {
     api.database.getDevice().then((device) => {
@@ -25,9 +26,19 @@ const LoginPage: React.FC = () => {
     });
   }, []);
 
-  
+  const validateForm = () => {
+    const errors: {email?: string; password?: string} = {};
+    if (!email) errors.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(email)) errors.email = 'Invalid email format';
+    if (!password) errors.password = 'Password is required';
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleLogin = useCallback( async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) return;
+
     setIsLoading(true);
     setMessage(null);
 
@@ -48,7 +59,7 @@ const LoginPage: React.FC = () => {
         if (success) {
           setTimeout(() => {
             api.window.openInTray(WindowIdentifier.Dashboard);
-            api.window.close(WindowIdentifier.Main);
+            window.close();
           }, 1500);
         }
       }
@@ -88,8 +99,9 @@ const LoginPage: React.FC = () => {
               placeholder="Enter your email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full"
+              className={`w-full ${formErrors.email ? 'border-red-500' : ''}`}
             />
+            {formErrors.email && <p className="text-red-500 text-sm">{formErrors.email}</p>}
           </div>
 
           <div className="space-y-2 relative">
@@ -100,8 +112,9 @@ const LoginPage: React.FC = () => {
               placeholder="Enter your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full"
+              className={`w-full ${formErrors.password ? 'border-red-500' : ''}`}
             />
+            {formErrors.password && <p className="text-red-500 text-sm">{formErrors.password}</p>}
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}

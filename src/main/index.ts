@@ -21,7 +21,7 @@ function handleOnReady() {
   if (!deviceId || !labId) {
     WindowManager.get(WindowManager.WINDOW_CONFIGS.setup_window.id);
   } else {
-    WindowManager.get(WindowManager.WINDOW_CONFIGS.splash_window.id);
+    WindowManager.get(WindowManager.WINDOW_CONFIGS.main_window.id);
   }
 }
 

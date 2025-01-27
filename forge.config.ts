@@ -78,14 +78,7 @@ const config: ForgeConfig = {
               js: './src/renderer/lib/preload.ts',
             },
           },
-          {
-            html: './src/renderer/assets/index.html',
-            js: './src/renderer/windows/splash.tsx',
-            name: 'splash_window',
-            preload: {
-              js: './src/renderer/lib/preload.ts',
-            },
-          },
+
           {
             html: './src/renderer/assets/index.html',
             js: './src/renderer/windows/dashboard/index.tsx',

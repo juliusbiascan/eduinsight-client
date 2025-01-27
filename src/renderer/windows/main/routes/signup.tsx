@@ -12,22 +12,24 @@ import { motion } from 'framer-motion';
 import Message from '../../../components/ui/message';
 import { Eye, EyeOff } from 'lucide-react'; // Add import for eye icons
 
+const initialFormData = {
+  firstName: '',
+  lastName: '',
+  schoolId: '',
+  course: '',
+  yearLevel: '',
+  role: '',
+  email: '',
+  contactNo: '',
+  password: '',
+  confirmPassword: ''
+};
+
 const SignUpForm = () => {
     const navigate = useNavigate();
     useToast();
     const [device, setDevice] = useState<Device | null>(null);
-    const [formData, setFormData] = useState({
-        firstName: '',
-        lastName: '',
-        schoolId: '',
-        course: '',
-        yearLevel: '',
-        role: '',
-        email: '',
-        contactNo: '',
-        password: '',
-        confirmPassword: ''
-    });
+    const [formData, setFormData] = useState(initialFormData);
     const [devicePurpose, setDevicePurpose] = useState('');
     const [agreeTerms, setAgreeTerms] = useState(false); // Add state for terms agreement
     const [isLoading, setIsLoading] = useState(false);
@@ -161,8 +163,37 @@ const SignUpForm = () => {
         return Object.keys(newErrors).length === 0;
     };
 
+    // Add validation utilities
+    const VALIDATION_RULES = {
+        password: /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/,
+        email: /\S+@\S+\.\S+/,
+        schoolId: /^\d{2}-\d{5}$/
+    };
+
+    const validateFields = (formData: typeof initialFormData) => {
+        const errors: Record<string, string> = {};
+        
+        if (!VALIDATION_RULES.email.test(formData.email)) {
+            errors.email = 'Invalid email format';
+        }
+        
+        if (!VALIDATION_RULES.password.test(formData.password)) {
+            errors.password = 'Password must contain letters and numbers, minimum 8 characters';
+        }
+        
+        // Add more validation rules
+        
+        return errors;
+    };
+
+    // Update handleSignUp to use validation
     const handleSignUp = async (e: React.FormEvent) => {
         e.preventDefault();
+        const validationErrors = validateFields(formData);
+        if (Object.keys(validationErrors).length > 0) {
+            setErrors(validationErrors);
+            return;
+        }
         if (!agreeTerms) {
             setErrors(prev => ({ ...prev, terms: "You must agree to the terms and conditions." }));
             return;
@@ -191,7 +222,7 @@ const SignUpForm = () => {
             });
 
             if (success) {
-                setTimeout(() => navigate('/'), 1500);
+                setTimeout(() => navigate('/login'), 1500);
             }
         } catch (err: any) {
             setMessage({
@@ -442,7 +473,7 @@ const SignUpForm = () => {
                         Already have an account?{' '}
                         <button
                             type="button"
-                            onClick={() => navigate('/')}
+                            onClick={() => navigate('/login')}
                             className="text-[#C9121F] hover:underline font-semibold"
                         >
                             Sign In

@@ -117,14 +117,6 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
       },
     },
   },
-  [WindowIdentifier.Splash]: {
-    id: WindowIdentifier.Splash,
-    url: SPLASH_WINDOW_WEBPACK_ENTRY,
-    options: {
-      ...kioskWindowConfig,
-      title: 'Splash',
-    },
-  },
   [WindowIdentifier.Dashboard]: {
     id: WindowIdentifier.Dashboard,
     url: DASHBOARD_WINDOW_WEBPACK_ENTRY,

@@ -9,13 +9,15 @@ import SignUpForm from './routes/signup';
 import ResetPasswordPage from './routes/reset';
 import TermsPage from './routes/terms'; // Import TermsPage
 import { SocketProvider } from '@/renderer/components/socket-provider';
+import { Splash } from './routes/splash';
 
 function Index() {
   return (
     <HashRouter>
       <Routes>
         <Route path="/" element={<MainLayout />}>
-          <Route index element={<LoginPage />} />
+          <Route index element={<Splash />} />
+          <Route path="login" element={<LoginPage />} />
           <Route path="signup" element={<SignUpForm />} />
           <Route path="reset" element={<ResetPasswordPage />} />
           <Route path="terms" element={<TermsPage />} />{' '}

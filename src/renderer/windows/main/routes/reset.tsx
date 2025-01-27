@@ -39,7 +39,7 @@ const ResetPasswordPage = () => {
             if (response.success) {
                 setMessage('Password has been reset successfully.');
                 setError(null);
-                navigate('/');
+                navigate('/login');
             } else {
                 setError(response.message || 'Failed to reset password.');
                 setMessage(null);
@@ -116,7 +116,7 @@ const ResetPasswordPage = () => {
                     Remember your password?{' '}
                     <button
                         type="button"
-                        onClick={() => navigate('/')}
+                        onClick={() => navigate('/login')}
                         className="text-[#C9121F] hover:underline font-semibold"
                     >
                         Sign In
