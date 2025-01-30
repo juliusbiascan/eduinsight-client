@@ -13,7 +13,7 @@ import {
 import { IPCRoute } from '../../shared/constants';
 import { ipcRenderer, IpcRendererEvent } from 'electron';
 import type AppInfo from 'package.json';
-
+import { Notification as NotificationType } from '../types/notification';
 
 export default {
   app: {
@@ -90,8 +90,9 @@ export default {
         IPCRoute.DATABASE_GET_ACTIVE_USER_BY_DEVICE_ID_AND_LAB_ID,
         deviceId,
         labId,
-      ) as Promise<ActiveDeviceUser & { user: DeviceUser & { subjects: Subject[]  , ActiveUserLogs: ActiveUserLogs[]} | null} |null>,
-
+      ) as Promise<ActiveDeviceUser & { user: DeviceUser & { subjects: Subject[], ActiveUserLogs: ActiveUserLogs[] } | null } | null>,
+    getActiveUserByUserId: (userId: string) =>
+      ipcRenderer.invoke(IPCRoute.DATABASE_GET_ACTIVE_USER_BY_USER_ID, userId) as Promise<ActiveDeviceUser & { user: DeviceUser, device: Device } | null>,
     getDeviceUserByActiveUserId: (userId: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_GET_DEVICE_USER_BY_ACTIVE_USER_ID,
@@ -224,7 +225,7 @@ export default {
         subjectCode,
         studentId,
         labId,
-      ) as Promise<{ success: boolean; message: string , subjectId: string}>,
+      ) as Promise<{ success: boolean; message: string, subjectId: string }>,
     leaveSubject: (subjectId: string, studentId: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_LEAVE_SUBJECT,
@@ -290,6 +291,38 @@ export default {
           }
         >
       >,
+    getNotifications: (userId: string) =>
+      ipcRenderer.invoke(IPCRoute.DATABASE_GET_NOTIFICATIONS, userId) as Promise<NotificationType[]>,
+
+    addNotification: (userId: string, notification: Omit<NotificationType, 'id' | 'userId' | 'createdAt' | 'updatedAt'>) =>
+      ipcRenderer.invoke(IPCRoute.DATABASE_ADD_NOTIFICATION, userId, notification) as Promise<NotificationType>,
+
+    markNotificationRead: (id: string | 'all', userId: string) =>
+      ipcRenderer.invoke(IPCRoute.DATABASE_MARK_NOTIFICATION_READ, id, userId) as Promise<{
+        success: boolean;
+        notification?: NotificationType;
+        count?: number;
+        error?: string;
+      }>,
+
+    removeNotification: (id: string) =>
+      ipcRenderer.invoke(IPCRoute.DATABASE_REMOVE_NOTIFICATION, id) as Promise<{
+        success: boolean;
+        notification?: NotificationType;
+        error?: string;
+      }>,
+
+    clearNotifications: (userId: string) =>
+      ipcRenderer.invoke(IPCRoute.DATABASE_CLEAR_NOTIFICATIONS, userId) as Promise<{
+        count: number;
+      }>,
+
+    markAllNotificationsRead: (userId: string) =>
+      ipcRenderer.invoke(IPCRoute.DATABASE_MARK_ALL_NOTIFICATIONS_READ, userId) as Promise<{
+        success: boolean;
+        count: number;
+        error?: string;
+      }>,
   },
   device: {
     init: () => ipcRenderer.send(IPCRoute.DEVICE_INITIATED),
@@ -373,21 +406,21 @@ export default {
         payload,
       ) as Promise<{ success: boolean; message?: string }>,
   },
-  screen:{
+  screen: {
     getScreenSourceId: () => ipcRenderer.invoke(IPCRoute.SCREEN_ID) as Promise<string>,
     stopScreenShare: () => ipcRenderer.send(IPCRoute.SCREEN_SHARE_STOP),
   },
   files: {
-    getDownloads: () => 
+    getDownloads: () =>
       ipcRenderer.invoke(IPCRoute.GET_DOWNLOADS) as Promise<{
         files: { name: string; path: string; subjectName: string; date: string }[];
         subjects: string[];
         isEmpty: boolean;
         error?: string;
       }>,
-    openDownloadsFolder: () => 
+    openDownloadsFolder: () =>
       ipcRenderer.invoke(IPCRoute.OPEN_DOWNLOADS_FOLDER),
-    openFile: (filePath: string) => 
+    openFile: (filePath: string) =>
       ipcRenderer.invoke(IPCRoute.OPEN_FILE, filePath),
   },
 };

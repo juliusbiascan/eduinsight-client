@@ -176,6 +176,16 @@ export default function () {
       }),
   );
 
+  ipcMain.handle(IPCRoute.DATABASE_GET_ACTIVE_USER_BY_USER_ID, (_e, userId: string) => {
+    return Database.prisma.activeDeviceUser.findFirst({
+      where: { userId },
+      include: {
+        user: true,
+        device: true,
+      },
+    });
+  });
+
   ipcMain.handle(IPCRoute.DATABASE_GET_DEVICE_USER_BY_ID, (_e, id: string) => {
     return Database.prisma.deviceUser.findFirst({ where: { id } });
   });
@@ -780,6 +790,14 @@ export default function () {
         return { success: false, message: 'Device already inused.' };
       }
 
+      const activeUser = await Database.prisma.activeDeviceUser.findFirst({
+        where: { userId: user.id },
+      });
+
+      if (activeUser) {
+        return { success: false, message: 'User already logged in.' };
+      }
+
       await Database.prisma.$transaction([
         Database.prisma.activeDeviceUser.create({
           data: {
@@ -932,5 +950,127 @@ export default function () {
         };
       }
     },
+  );
+
+  ipcMain.handle(
+    IPCRoute.DATABASE_GET_NOTIFICATIONS,
+    async (_, userId: string) => {
+      return await Database.prisma.notification.findMany({
+        where: { userId },
+        orderBy: { time: 'desc' },
+      });
+    },
+  );
+
+  ipcMain.handle(
+    IPCRoute.DATABASE_ADD_NOTIFICATION,
+    async (_, userId: string, notification: any) => {
+      try {
+        const dbNotification = {
+          userId,
+          type: notification.type,
+          title: notification.title,
+          message: notification.message,
+          time: new Date(notification.time),
+          read: notification.read,
+          category: notification.category,
+          priority: notification.priority,
+          icon: notification.icon,
+          sound: notification.sound,
+          count: notification.count || 1,
+          status: notification.status,
+          progress: notification.progress,
+          filePath: notification.filePath,
+          subjectName: notification.subjectName,
+          error: notification.error,
+          targetCount: notification.targetCount,
+          quizId: notification.quizId,
+          score: notification.score,
+          totalPoints: notification.totalPoints,
+          teacherName: notification.teacherName,
+        };
+
+        const result = await Database.prisma.notification.create({
+          data: dbNotification,
+        });
+
+        return result;
+      } catch (error) {
+        console.error('Error adding notification:', error);
+        throw error;
+      }
+    }
+  );
+
+  ipcMain.handle(
+    IPCRoute.DATABASE_MARK_NOTIFICATION_READ,
+    async (_, id: string | 'all', userId: string) => {
+      try {
+        if (id === 'all') {
+          // Mark all notifications as read for the user
+          const result = await Database.prisma.notification.updateMany({
+            where: { 
+              userId,
+              read: false 
+            },
+            data: { read: true }
+          });
+          return { success: true, count: result.count };
+        }
+
+        // Mark single notification as read
+        const result = await Database.prisma.notification.update({
+          where: { id },
+          data: { read: true }
+        });
+        return { success: true, notification: result };
+      } catch (error) {
+        console.error('Error marking notification as read:', error);
+        return { success: false, error: 'Failed to mark notification as read' };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    IPCRoute.DATABASE_REMOVE_NOTIFICATION,
+    async (_, id: string) => {
+      try {
+        const result = await Database.prisma.notification.delete({
+          where: { id }
+        });
+        return { success: true, notification: result };
+      } catch (error) {
+        console.error('Error removing notification:', error);
+        return { success: false, error: 'Failed to remove notification' };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    IPCRoute.DATABASE_CLEAR_NOTIFICATIONS,
+    async (_, userId: string) => {
+      return await Database.prisma.notification.deleteMany({
+        where: { userId },
+      });
+    },
+  );
+
+  ipcMain.handle(
+    IPCRoute.DATABASE_MARK_ALL_NOTIFICATIONS_READ,
+    async (_, userId: string) => {
+      try {
+        const result = await Database.prisma.notification.updateMany({
+          where: { 
+            userId,
+            read: false 
+          },
+          data: { read: true }
+        });
+        return { success: true, count: result.count };
+      } catch (error) {
+        console.error('Error marking all notifications as read:', error);
+        return { success: false, error: 'Failed to mark all notifications as read' };
+      }
+    }
   );
 }

@@ -148,6 +148,7 @@ model DeviceUser {
   activityLogs      ActivityLogs[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+  notifications     Notification[]
 
   ActiveUserLogs ActiveUserLogs[]
 
@@ -284,4 +285,34 @@ model QuizRecord {
   completedAt    DateTime
   createdAt      DateTime @default(now())
   updatedAt      DateTime @default(now())
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  type        String
+  title       String
+  message     String
+  time        DateTime @default(now())
+  read        Boolean  @default(false)
+  category    String?
+  priority    String?  @default("low")
+  icon        String?
+  sound       Boolean  @default(true)
+  count       Int      @default(1)
+  status      String?
+  progress    Float?
+  filePath    String?
+  subjectName String?
+  error       String?
+  targetCount Int?
+  quizId      String?
+  score       Int?
+  totalPoints Int?
+  teacherName String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        DeviceUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

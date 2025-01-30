@@ -105,9 +105,10 @@ const io = new Server(httpServer, {
   connectTimeout: 60000, // 60 second connection timeout
 });
 
+// Add max listeners configuration
+process.setMaxListeners(15); // Increase default limit to accommodate our needs
+
 let userCount = 0;
-const screenUpdateTimes = new Map<string, number>(); // Add this line to track screen update times
-let lastPingTime = Date.now(); // Add this line to track last ping time
 
 const CHUNK_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
@@ -131,13 +132,57 @@ const fileTransfers = new Map<string, IFileTransfer>();
 
 const TRANSFER_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
+// Move cleanup handler outside connection scope
+process.on("exit", () => {
+  // Cleanup all file transfers
+  for (const [_, transfer] of fileTransfers.entries()) {
+    if (transfer.timeoutHandle) {
+      clearTimeout(transfer.timeoutHandle);
+    }
+  }
+  fileTransfers.clear();
+});
+
+interface ScreenMetrics {
+  fps: number;
+  quality: number;
+  networkDelay: number;
+  droppedFrames: number;
+  lastUpdate: number;
+  totalFrames: number;
+}
+
+const screenMetrics = new Map<string, ScreenMetrics>();
+
+const updateMetrics = (userId: string, metrics: Partial<ScreenMetrics>) => {
+  const current = screenMetrics.get(userId) || {
+    fps: 0,
+    quality: 0.8,
+    networkDelay: 0,
+    droppedFrames: 0,
+    lastUpdate: Date.now(),
+    totalFrames: 0
+  };
+
+  screenMetrics.set(userId, {
+    ...current,
+    ...metrics,
+    lastUpdate: Date.now()
+  });
+};
+
+const screenSharing = new Map<string, {
+  startTime: number;
+  frames: number;
+  quality: number;
+  lastUpdate: number;
+  settings: any;
+}>();
+
 io.on("connection", (socket) => {
   console.log("a user connected");
   userCount++;
   io.emit("user count", userCount);
-
-  // Reset lastPingTime on new connection
-  lastPingTime = Date.now();
 
   const joinServer = (deviceId: string) => {
     socket.join(deviceId);
@@ -362,8 +407,8 @@ io.on("connection", (socket) => {
     }
   }, 60 * 1000);
 
-  // Clean up interval on process exit
-  process.on("exit", () => {
+  // Clean up interval on socket disconnect instead of process exit
+  socket.on("disconnect", () => {
     clearInterval(cleanupInterval);
   });
 
@@ -372,18 +417,123 @@ io.on("connection", (socket) => {
     return error instanceof Error;
   };
 
-  // Add memory monitoring
-  setInterval(() => {
-    const used = process.memoryUsage();
-    if (used.heapUsed > 0.8 * used.heapTotal) {
-      console.warn("High memory usage detected:", used);
-      // Force garbage collection if available
-      if (global.gc) {
-        global.gc();
-      }
-    }
-  }, 30000);
+  // Add performance tracking
+  interface IScreenUpdate {
+    count: number;
+    totalSize: number;
+    lastUpdate: number;
+    droppedFrames: number;
+    avgFPS: number;
+    networkDelay: number;  // Add networkDelay property
+  }
 
+  const performanceMetrics = {
+    screenUpdates: new Map<string, IScreenUpdate>(),
+    resetMetrics: function (userId: string) {
+      this.screenUpdates.set(userId, {
+        count: 0,
+        totalSize: 0,
+        lastUpdate: Date.now(),
+        droppedFrames: 0,
+        avgFPS: 0,
+        networkDelay: 0  // Initialize networkDelay
+      });
+    }
+  };
+
+  // Update the rate limiter type
+  interface IScreenRateLimiter {
+    lastUpdate: number;
+    skippedUpdates: number;
+    targetFPS: number;
+    resolution: { width: number; height: number };
+    quality: number;
+    compression: number; // Add this property
+    metrics: {
+      droppedFrames: number;
+      totalFrames: number;
+      avgLatency: number;
+      networkDelay?: number; // Add this optional property
+    };
+    adaptiveSettings: {
+      minFPS: number;
+      maxFPS: number;
+      minCompression: number;
+      maxCompression: number;
+      targetLatency: number;
+    };
+  }
+
+  const screenRateLimiter = new Map<string, IScreenRateLimiter>();
+
+  const screenData = ({
+    userId,
+    subjectId,
+    data,
+    timestamp,
+    metadata
+  }: {
+    userId: string;
+    subjectId: string;
+    data: Uint8Array;
+    timestamp: number;
+    metadata?: {
+      frameRate?: number;
+      quality?: number;
+      networkDelay?: number;
+    };
+  }) => {
+    
+    try {
+      // Update performance metrics
+      updateMetrics(userId, {
+        ...metadata,
+        networkDelay: Date.now() - timestamp
+      });
+
+      // Get current metrics
+      const currentMetrics = screenMetrics.get(userId);
+
+      // Emit with metrics
+      socket.to(subjectId).volatile.emit('screen-data', {
+        userId,
+        screenData: data,
+        timestamp,
+        metrics: currentMetrics
+      });
+
+      // Adaptive quality control
+      if (currentMetrics && currentMetrics.networkDelay > 200) {
+        socket.emit('adjust-quality', {
+          targetFPS: Math.max(15, currentMetrics.fps - 5),
+          quality: Math.max(0.5, currentMetrics.quality - 0.1)
+        });
+      }
+
+    } catch (error) {
+      console.error('Screen data error:', error);
+    }
+  };
+
+  // Add cleanup for rate limiters and metrics
+  socket.on("disconnect", (reason) => {
+    // Clean up screen sharing related resources
+    screenRateLimiter.delete(socket.id);
+    performanceMetrics.screenUpdates.delete(socket.id);
+    
+    // Clean up intervals
+    clearInterval(cleanupInterval);
+    
+    // Update user count
+    console.log("user disconnected, reason:", reason);
+    userCount--;
+    io.emit("user count", userCount);
+    
+    // Log disconnect
+    console.log(`Client ${socket.id} disconnected`);
+  });
+
+  // Update showScreen handler to initialize metrics
   const showScreen = ({
     deviceId,
     userId,
@@ -393,38 +543,90 @@ io.on("connection", (socket) => {
     userId: string;
     subjectId: string;
   }) => {
-    socket.to(deviceId).emit("show-screen", { deviceId, userId, subjectId });
-  };
+    try {
+      const settings = {
+        targetFPS: 20,
+        quality: 0.8,
+        resolution: { width: 854, height: 480 },
+        adaptiveThresholds: {
+          latencyHigh: 200,
+          latencyLow: 50,
+          dropRateHigh: 0.1,
+          dropRateLow: 0.05
+        }
+      };
 
-  const hideScreen = ({ deviceId }: { deviceId: string }) => {
-    socket.to(deviceId).emit("hide-screen");
-  };
+      screenSharing.set(userId, {
+        startTime: Date.now(),
+        frames: 0,
+        quality: settings.quality,
+        lastUpdate: Date.now(),
+        settings
+      });
 
-  const screenData = ({
-    userId,
-    subjectId,
-    screenData,
-    timestamp,
-  }: {
-    userId: string;
-    subjectId: string;
-    screenData: string;
-    timestamp: number;
-  }) => {
-    // Implement rate limiting
-    const now = Date.now();
-    const lastUpdate = screenUpdateTimes.get(userId) || 0;
+      socket.to(deviceId).emit('show-screen', { 
+        userId, 
+        subjectId,
+        settings 
+      });
 
-    // Limit updates to one every 100ms per user
-    if (now - lastUpdate >= 100) {
-      screenUpdateTimes.set(userId, now);
-      socket.to(subjectId).emit("screen-data", {
+      // Monitor performance and adjust settings
+      const monitor = setInterval(() => {
+        const sharing = screenSharing.get(userId);
+        if (!sharing) return;
+
+        const metrics = screenMetrics.get(userId);
+        if (!metrics) return;
+
+        const newQuality = adjustQuality(metrics, sharing.settings);
+        if (newQuality !== sharing.quality) {
+          sharing.quality = newQuality;
+          socket.emit('adjust-quality', { quality: newQuality });
+        }
+      }, 5000);
+
+      cleanupFunctions.set(userId, () => {
+        clearInterval(monitor);
+        screenSharing.delete(userId);
+        screenMetrics.delete(userId);
+      });
+
+    } catch (error) {
+      console.error('Error in showScreen:', error);
+      socket.emit('screen-share-error', {
         userId,
-        screenData,
-        timestamp,
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   };
+
+  const hideScreen = ({ deviceId, userId }: { deviceId: string; userId: string }) => {
+    const cleanup = cleanupFunctions.get(userId);
+    if (cleanup) {
+      cleanup();
+      cleanupFunctions.delete(userId);
+    }
+    
+    socket.to(deviceId).emit('hide-screen', {
+      userId,
+      timestamp: Date.now()
+    });
+  };
+
+  const adjustQuality = (metrics: ScreenMetrics, settings: any) => {
+    const { latencyHigh, latencyLow, dropRateHigh, dropRateLow } = settings.adaptiveThresholds;
+    
+    if (metrics.networkDelay > latencyHigh || metrics.droppedFrames / metrics.totalFrames > dropRateHigh) {
+      return Math.max(0.5, metrics.quality - 0.1);
+    } else if (metrics.networkDelay < latencyLow && metrics.droppedFrames / metrics.totalFrames < dropRateLow) {
+      return Math.min(0.9, metrics.quality + 0.05);
+    }
+    
+    return metrics.quality;
+  };
+
+  // Add at the top with other interface definitions
+  const cleanupFunctions = new Map<string, () => void>();
 
   const startLiveQuiz = ({
     deviceId,
@@ -458,6 +660,37 @@ io.on("connection", (socket) => {
     socket.to(receiverId).emit("screen-share-stopped", { senderId });
   };
 
+  const limitWeb = ({ enabled }: { enabled: boolean }) => {
+    // Broadcast to all connected clients
+    io.emit("limit-web", { enabled });
+  };
+
+  const getWebLimitStatus = () => {
+    // Broadcast request to all connected clients
+    io.emit("get-web-limit-status");
+  };
+
+  const webLimited = ({ success, enabled, error }: {
+    success: boolean;
+    enabled?: boolean;
+    error?: string;
+  }) => {
+    // Broadcast response to all except sender
+    socket.broadcast.emit("web-limited", { success, enabled, error });
+  };
+
+  const webLimitStatus = ({ success, limited, error }: {
+    success: boolean;
+    limited?: boolean;
+    error?: string;
+  }) => {
+    // Broadcast status to all except sender
+    socket.broadcast.emit("web-limit-status", { success, limited, error });
+  };
+
+  socket.on("ping", () => {
+    socket.emit("pong");
+  });
   socket.on("start-live-quiz", startLiveQuiz);
   socket.on("screen-data", screenData);
   socket.on("join-server", joinServer);
@@ -478,41 +711,50 @@ io.on("connection", (socket) => {
   socket.on("screen-share-offer", handleScreenShareOffer);
   socket.on("screen-share-stopped", handleScreenShareStopped);
   socket.on("leave-server", leaveServer);
+  socket.on("limit-web", limitWeb);
+  socket.on("get-web-limit-status", getWebLimitStatus);
+  socket.on("web-limited", webLimited);
+  socket.on("web-limit-status", webLimitStatus);
 
-  socket.on("ping", () => {
-    lastPingTime = Date.now();
-    socket.emit("pong");
-  });
-
-  // Add connection monitoring
-  socket.on("disconnect", (reason) => {
-    console.log("user disconnected, reason:", reason);
-    userCount--;
-    io.emit("user count", userCount);
-    clearInterval(healthCheck);
-    // Clean up screen update times for disconnected users
-    screenUpdateTimes.clear();
-  });
-
-  socket.on("error", (error) => {
-    console.error("socket error:", error);
-  });
-
-  // Monitor connection health
-  const healthCheck = setInterval(() => {
-    if (Date.now() - lastPingTime > 60000) { // 60 seconds without ping
-      socket.disconnect(true);
-      clearInterval(healthCheck);
+  // Single consolidated disconnect handler
+  socket.once("disconnect", (reason) => {
+    try {
+      console.log(`Client ${socket.id} disconnected, reason:`, reason);
+      
+      // Clean up screen sharing resources
+      screenRateLimiter.delete(socket.id);
+      performanceMetrics.screenUpdates.delete(socket.id);
+      screenMetrics.delete(socket.id);
+      
+      // Clear all cleanup functions for this socket
+      for (const [userId, cleanup] of cleanupFunctions.entries()) {
+        if (socket.rooms.has(userId)) {
+          cleanup();
+          cleanupFunctions.delete(userId);
+        }
+      }
+      
+      // Clean up intervals
+      clearInterval(cleanupInterval);
+      
+      // Update user count
+      userCount = Math.max(0, userCount - 1); // Prevent negative count
+      io.emit("user count", userCount);
+      
+    } catch (error) {
+      console.error("Error during disconnect cleanup:", error);
     }
-  }, 30000);
-
-  socket.on("disconnect", () => {
-    clearInterval(healthCheck);
   });
 
-  socket.on("disconnect", () => {
-    console.log("user disconnected");
-    userCount--;
-    io.emit("user count", userCount);
+  // Error handler
+  socket.on("error", (error) => {
+    console.error("Socket error:", error);
+    // Attempt cleanup on error
+    screenRateLimiter.delete(socket.id);
+    performanceMetrics.screenUpdates.delete(socket.id);
+    screenMetrics.delete(socket.id);
   });
+
+  // Remove all other disconnect handlers
+
 });

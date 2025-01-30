@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, MenuItemConstructorOptions, Tray } from "electron";
+import { app, BrowserWindow, Menu, MenuItemConstructorOptions, Tray } from "electron";
 import { WindowManager } from ".";
 
 let tray: Tray;
@@ -34,7 +34,14 @@ const menuTemplate: MenuItemConstructorOptions[] = [
     label: "Preferences",
     accelerator: "Cmd+,",
     click: () => {
-      console.log("Preferences");
+      WindowManager.get(WindowManager.WINDOW_CONFIGS.setup_window.id);
+    }
+  },
+  {
+    label: "Quit",
+    accelerator: "Cmd+x",
+    click: () => {
+      app.quit();
     }
   },
   {

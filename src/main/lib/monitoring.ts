@@ -2,7 +2,6 @@ import { activeWindow } from 'get-windows';
 import { powerMonitor } from "electron";
 import { Database } from '.';
 import { ActivityManager } from './activity';
-import { getSocketInstance } from './socket-manager';
 
 /**
  * Gets the current timestamp in the format "YYYY-MM-DD HH:MM:SS".
@@ -29,8 +28,6 @@ let monitoringInterval: NodeJS.Timeout;
 export async function startMonitoring(userId: string, deviceId: string, labId: string) {
   console.log("Starting monitoring for:", { userId, deviceId, labId });
   setPowerMonitor(userId, deviceId, labId);
-
-  const socket = getSocketInstance();
 
   if (!userId || !deviceId || !labId) {
     console.error("User ID, device ID, and lab ID are required for monitoring.");
@@ -60,7 +57,6 @@ export async function startMonitoring(userId: string, deviceId: string, labId: s
           if (activitySaved) {
             lastTitle = result.title;
             lastUpdateTime = currentTime;
-            socket.emit("activity-update", deviceId);
           }
         }
       }
@@ -91,11 +87,6 @@ async function pushPowerLogsToDB(pm_status: string, pm_log_ts: string, userId: s
         labId
       }
     });
-    
-    const socket = getSocketInstance();
-    if (socket) {
-      socket.emit("power-monitoring-update", { deviceId });
-    }
   } catch (error) {
     console.error("Error pushing power log to DB:", error);
   }

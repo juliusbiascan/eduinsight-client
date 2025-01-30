@@ -28,6 +28,7 @@ const kioskWindowConfig: Electron.BrowserWindowConstructorOptions = {
   maximizable: false,
   alwaysOnTop: true,
   skipTaskbar: true,
+  center: true,
   webPreferences: {
     preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
     nodeIntegration: true,
@@ -121,16 +122,8 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
     id: WindowIdentifier.Dashboard,
     url: DASHBOARD_WINDOW_WEBPACK_ENTRY,
     options: {
+      ...kioskWindowConfig,
       title: 'Dashboard',
-      ...baseWindowConfig,
-      center: true,
-      show: false,
-      frame: false,
-      resizable: true,
-      minimizable: false,
-      maximizable: true,
-      alwaysOnTop: true,
-      skipTaskbar: true,
     },
   },
   [WindowIdentifier.QuizPlayer]: {

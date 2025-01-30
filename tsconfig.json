@@ -17,7 +17,8 @@
     "sourceMap": true,
     "target": "ES6"
   },
-  "include": ["src/**/*", "archives/database-setup.tsx"],
+  "include": ["src/**/*"],
+  "exclude": ["./server.ts"],
   "ts-node": {
     "compilerOptions": {
       "module": "CommonJS"

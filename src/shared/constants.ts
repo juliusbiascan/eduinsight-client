@@ -1,8 +1,12 @@
 export enum Config {
-  SOCKET_URL = 'https://socket.eduinsight.systems',
+  SOCKET_URL = 'https://192.168.1.142:4000',
   DATABASE_URL = 'mysql://eduinsight_user:eduinsight_pass@192.168.1.142:3306/eduinsight',
 }
 
+export enum FileConfig {
+  CHUNK_SIZE = 512 * 1024,
+  MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024,
+}
 /**
  * Browser Window unique identifier names.
  *
@@ -60,6 +64,7 @@ export enum IPCRoute {
   DATABASE_GET_ALL_ACTIVE_DEVICE_USERS_BY_LAB_ID = '/database/get_all_active_device_users_by_lab_id',
   DATABASE_GET_SUBJECT_RECORDS_BY_SUBJECT_ID = '/database/get_subject_records_by_subject_id',
   DATABASE_GET_ACTIVE_USERS_BY_SUBJECT_ID = '/database/get_active_users_by_subject_id',
+  DATABASE_GET_ACTIVE_USER_BY_USER_ID = '/database/get_user_by_id',
   DATABASE_GET_SUBJECTS_BY_LAB_ID = '/database/get_subjects_by_lab_id',
   DATABASE_GET_SUBJECTS_BY_USER_ID = '/database/get_subjects_by_user_id',
   DATABASE_GET_SUBJECT_BY_ID = '/database/get_subject_by_id',
@@ -126,4 +131,12 @@ export enum IPCRoute {
   GET_DOWNLOADS = 'get-downloads',
   OPEN_DOWNLOADS_FOLDER = 'open-downloads-folder',
   OPEN_FILE = 'open-file',
+
+  // Notification routes
+  DATABASE_GET_NOTIFICATIONS = '/database/get-notifications',
+  DATABASE_ADD_NOTIFICATION = '/database/add-notification',
+  DATABASE_MARK_NOTIFICATION_READ = '/database/mark-notification-read',
+  DATABASE_REMOVE_NOTIFICATION = '/database/remove-notification',
+  DATABASE_CLEAR_NOTIFICATIONS = '/database/clear-notifications',
+  DATABASE_MARK_ALL_NOTIFICATIONS_READ = '/database/mark-all-notifications-read',
 }
