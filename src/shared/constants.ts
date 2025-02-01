@@ -1,6 +1,6 @@
 export enum Config {
-  SOCKET_URL = 'https://192.168.1.142:4000',
-  DATABASE_URL = 'mysql://eduinsight_user:eduinsight_pass@192.168.1.142:3306/eduinsight',
+  SOCKET_URL = 'https://eduinsight.systems:4000',
+  DATABASE_URL = 'mysql://eduinsight_user:eduinsight_pass@eduinsight.systems:3306/eduinsight',
 }
 
 export enum FileConfig {

@@ -1,11 +1,11 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import {
   MakerSquirrel,
-  MakerSquirrelConfig,
 } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
+import { MakerWix } from '@electron-forge/maker-wix';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { WebpackPlugin } from '@electron-forge/plugin-webpack';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
@@ -33,22 +33,23 @@ const config: ForgeConfig = {
       setupExe: 'EduInsight Client Setup.exe',
       setupIcon: path.resolve(__dirname, 'images/app-icon.ico'),
       loadingGif: path.resolve(__dirname, 'images/setup.gif'),
-      ...({
-        // Add the shortcuts configuration here
-        shortcuts: [
-          {
-            name: 'EduInsight Client',
-            description: 'Launch EduInsight Client',
-            target: ['[ROOTDIR]\\EduInsight Client.exe'],
-          },
-          {
-            name: 'EduInsight Dashboard',
-            description: 'Open EduInsight Dashboard',
-            target: ['[ROOTDIR]\\EduInsight Client.exe', '--dashboard'],
-          },
-          // Add more shortcuts as needed
-        ],
-      } as any as MakerSquirrelConfig),
+    }),
+    new MakerWix({
+      name: 'EduInsight Client',
+      language: 1033,
+      icon: path.resolve(__dirname, 'images/app-icon.ico'),
+      description: 'Computer lab monitoring and control software',
+      manufacturer: 'Julius Biascan',
+      exe: 'EduInsight Client',
+      upgradeCode: '8a22b26c-3275-41db-9faa-2db883f25d63',
+      ui: {
+        chooseDirectory: true,
+      },
+      features: {
+        autoLaunch: true,
+        autoUpdate: true,
+      },
+    
     }),
     new MakerZIP({}, ['darwin']),
     new MakerRpm({}),

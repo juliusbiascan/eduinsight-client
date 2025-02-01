@@ -48,10 +48,10 @@ function handleOnReady() {
     return;
   }
 
-  // This line configures the app to start automatically on system login
-  // It sets the 'openAtLogin' setting to true if the app is not running in development mode
-  // This ensures that the app starts automatically when the user logs in, but only in production
-  app.setLoginItemSettings({ openAtLogin: true });
+  // // This line configures the app to start automatically on system login
+  // // It sets the 'openAtLogin' setting to true if the app is not running in development mode
+  // // This ensures that the app starts automatically when the user logs in, but only in production
+  // app.setLoginItemSettings({ openAtLogin: true });
 
   // SSL/TSL: this is the self signed certificate support
   app.on(

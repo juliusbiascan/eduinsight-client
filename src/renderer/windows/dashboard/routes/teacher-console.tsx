@@ -126,6 +126,12 @@ interface FileTransfer {
   error?: string;
 }
 
+interface LayoutSettings {
+  option: 'Auto' | 'Tiled' | 'Spotlight' | 'Sidebar';
+  maxTiles: number;
+  hideNoVideo: boolean;
+}
+
 export const TeacherConsole = () => {
   // Core state
   const { socket, isConnected } = useSocket();
@@ -200,10 +206,6 @@ export const TeacherConsole = () => {
 
   // Add these state declarations
   const [isLayoutDialogOpen, setIsLayoutDialogOpen] = useState(false);
-  const [layoutOption, setLayoutOption] = useState('Auto');
-  const [maxTiles, setMaxTiles] = useState(4);
-  const [hideNoVideo, setHideNoVideo] = useState(false);
-
   // Add notifications hook
   const {
     notifications,
@@ -510,7 +512,9 @@ export const TeacherConsole = () => {
     }
   };
 
-  const fetchActiveUsers = async () => {
+  const fetchActiveUsers = useCallback(async () => {
+    if (!selectedSubject) return;
+
     try {
       const subjectRecords = await api.database.getSubjectRecordsBySubjectId(
         selectedSubject.id,
@@ -522,23 +526,43 @@ export const TeacherConsole = () => {
       );
       setActiveUsers(activeUsers);
 
-      for (const record of subjectRecords) {
-        await fetchStudentInfo(record.userId);
+      // Immediately fetch student info for all active users
+      for (const user of activeUsers) {
+        try {
+          const student = await api.database.getDeviceUserById(user.userId);
+          setStudentInfo((prev) => ({
+            ...prev,
+            [user.userId]: {
+              id: student.id,
+              firstName: student.firstName,
+              lastName: student.lastName,
+              schoolId: student.schoolId,
+            },
+          }));
+        } catch (error) {
+          console.error(
+            `Error fetching student info for ${user.userId}:`,
+            error,
+          );
+        }
       }
     } catch (error) {
       console.error('Error fetching active users:', error);
     }
-  };
+  }, [selectedSubject]);
 
   useEffect(() => {
     if (selectedSubject) {
       fetchActiveUsers();
     }
-  }, [selectedSubject, fetchStudentInfo]);
+  }, [selectedSubject, fetchActiveUsers]);
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const handleSubjectChange = async (value: string) => {
     const newSelectedSubject = subjects.find((s) => s.id === value) || null;
     setSelectedSubject(newSelectedSubject);
+    setIsSidebarOpen(false); // Close sidebar when subject is selected
 
     const subjectRecords =
       await api.database.getSubjectRecordsBySubjectId(value);
@@ -957,111 +981,64 @@ export const TeacherConsole = () => {
     }
   };
 
-  const handleMaximizeScreen = useCallback((userId: string, event?: React.MouseEvent) => {
-    if (event) {
-      event.stopPropagation();
-    }
-    
-    if (maximizeTimeout) {
-      // Double click detected
-      clearTimeout(maximizeTimeout);
-      setMaximizeTimeout(null);
-      setMaximizedScreen((prev) => (prev === userId ? null : userId));
-    } else {
-      // First click - start timer
-      const timeout = setTimeout(() => {
-        setMaximizeTimeout(null);
-      }, 300); // 300ms double-click threshold
-      setMaximizeTimeout(timeout);
-    }
-  }, [maximizeTimeout]);
-
-  const toggleStudentSelection = useCallback((userId: string, event?: React.MouseEvent) => {
-    if (event) {
-      event.stopPropagation();
-    }
-    
-    setSelectedStudents((prev) => {
-      if (prev.includes(userId)) {
-        return prev.filter((id) => id !== userId);
-      } else {
-        return [...prev, userId];
+  const handleMaximizeScreen = useCallback(
+    (userId: string, event?: React.MouseEvent) => {
+      if (event) {
+        event.stopPropagation();
       }
-    });
-  }, []);
+
+      if (maximizeTimeout) {
+        // Double click detected
+        clearTimeout(maximizeTimeout);
+        setMaximizeTimeout(null);
+        setMaximizedScreen((prev) => (prev === userId ? null : userId));
+      } else {
+        // First click - start timer
+        const timeout = setTimeout(() => {
+          setMaximizeTimeout(null);
+        }, 300); // 300ms double-click threshold
+        setMaximizeTimeout(timeout);
+      }
+    },
+    [maximizeTimeout],
+  );
+
+  const toggleStudentSelection = useCallback(
+    (userId: string, event?: React.MouseEvent) => {
+      if (event) {
+        event.stopPropagation();
+      }
+
+      setSelectedStudents((prev) => {
+        if (prev.includes(userId)) {
+          return prev.filter((id) => id !== userId);
+        } else {
+          return [...prev, userId];
+        }
+      });
+    },
+    [],
+  );
 
   // Update the renderStudentScreen function to use the new event handlers
   const renderStudentScreen = useCallback(
     (userId: string, student: StudentInfo) => {
       const screenState = studentScreenState[userId];
       const isMaximized = maximizedScreen === userId;
+      const isSelected = selectedStudents.includes(userId);
+      const isDisconnected = !activeUsers.some(user => user.userId === userId);
 
       return (
         <div
           key={userId}
-          className={`flex flex-col rounded-lg bg-white shadow-md hover:shadow-lg transition-all ${
+          className={`relative group rounded-xl overflow-hidden transition-all duration-300 ${
             isMaximized ? 'fixed inset-4 z-50' : 'h-full'
-          }`}
-          onClick={(e) => e.stopPropagation()}
+          } ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
         >
-          <div className="flex items-center justify-between p-3">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                checked={selectedStudents.includes(userId)}
-                onCheckedChange={() => {
-                  toggleStudentSelection(userId);
-                }}
-                className="mr-2"
-                onClick={(e) => e.stopPropagation()}
-              />
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>
-                  {student?.firstName?.[0]}
-                  {student?.lastName?.[0]}
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <p className="text-sm font-medium">
-                  {student?.firstName} {student?.lastName}
-                </p>
-                <p className="text-xs text-gray-500">ID: {student?.schoolId}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge
-                variant={isReconnecting ? 'secondary' : 'default'}
-                className="text-xs animate-pulse"
-              >
-                Live
-              </Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => handleMaximizeScreen(userId, e)}
-                className="hover:bg-gray-100"
-              >
-                {isMaximized ? (
-                  <Minimize2 className="h-4 w-4" />
-                ) : (
-                  <Maximize2 className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          </div>
-
-          <div
-            className={`relative aspect-video bg-gray-100 rounded-lg overflow-hidden`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {isReconnecting ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-50/80 backdrop-blur-[2px]">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-400 border-t-transparent mb-2"></div>
-                  <p className="text-sm text-blue-600">Reconnecting...</p>
-                </div>
-              </div>
-            ) : screenState?.remoteStream ? (
-              <div className="relative group h-full">
+          <div className="relative w-full h-full bg-gray-900">
+            {screenState?.remoteStream && !isDisconnected ? (
+              // Video stream available
+              <>
                 <video
                   ref={(video) => {
                     if (video) {
@@ -1072,51 +1049,168 @@ export const TeacherConsole = () => {
                   autoPlay
                   playsInline
                   muted
-                  onDoubleClick={() => handleMaximizeScreen(userId)}
                   className={`w-full h-full object-cover ${
                     isMaximized ? 'fixed inset-0 z-50' : ''
-                  } rounded-lg bg-black cursor-pointer`}
+                  }`}
                 />
-                <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                  <p className="text-xs text-white text-center">
-                    Last update:{' '}
-                    {formatDistance(screenState.lastUpdate || 0, new Date(), {
-                      addSuffix: true,
-                    })}
-                  </p>
-                </div>
-              </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </>
             ) : (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <MonitorOff className="h-8 w-8 text-gray-400 mb-2 mx-auto" />
-                  <p className="text-sm text-gray-400">
-                    Waiting for screen data...
-                  </p>
+              <>
+              <video
+                  autoPlay
+                  playsInline
+                  muted
+                  className={`w-full h-full object-cover ${
+                    isMaximized ? 'fixed inset-0 z-50' : ''
+                  }`}
+                />
+              // Disconnected or No video state
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-gray-800 to-gray-900">
+                <div className="relative w-full h-full flex flex-col items-center justify-center">
+                  <div className="flex flex-col items-center space-y-6">
+                    <div className="relative">
+                      <Avatar className="h-24 w-24 border-2 border-gray-700">
+                        <AvatarFallback className="bg-gray-800 text-gray-300 text-2xl">
+                          {student?.firstName?.[0]}
+                          {student?.lastName?.[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="absolute -bottom-2 -right-2 bg-gray-800 rounded-full p-2.5 border-2 border-gray-900">
+                        {isDisconnected ? (
+                          <WifiOff className="h-5 w-5 text-red-400" />
+                        ) : (
+                          <MonitorOff className="h-5 w-5 text-gray-400" />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-center space-y-2">
+                      <h3 className="text-gray-300 font-medium text-lg">
+                        {student?.firstName} {student?.lastName}
+                      </h3>
+                      <p className="text-sm text-gray-500">{student?.schoolId}</p>
+                      
+                      <div className="flex items-center justify-center space-x-2 bg-gray-800/50 px-3 py-1.5 rounded-full">
+                        {isDisconnected ? (
+                          <>
+                            <WifiOff className="h-4 w-4 text-red-400" />
+                            <span className="text-sm text-red-400">Disconnected</span>
+                          </>
+                        ) : (
+                          <>
+                            <MonitorOff className="h-4 w-4 text-gray-400" />
+                            <span className="text-sm text-gray-400">No Video Feed</span>
+                          </>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-gray-500 mt-4">
+                        {isDisconnected
+                          ? 'Student has left the session'
+                          : 'Waiting for screen share...'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Screen power indicator */}
+                  <div className="absolute bottom-4 right-4 flex items-center space-x-2">
+                    <div className={`w-2 h-2 rounded-full ${isDisconnected ? 'bg-red-500' : 'bg-gray-600'}`}></div>
+                    <span className="text-xs text-gray-500">
+                      {isDisconnected ? 'Offline' : 'Standby'}
+                    </span>
+                  </div>
                 </div>
               </div>
+              </>
             )}
+
+            {/* Control overlay */}
+            <div className="absolute top-0 left-0 right-0 p-3 flex justify-between items-start opacity-0 group-hover:opacity-100 transition-opacity z-10">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => toggleStudentSelection(userId)}
+                  className="data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500"
+                />
+                <Badge
+                  variant={isDisconnected ? 'destructive' : isReconnecting ? 'secondary' : 'default'}
+                  className="bg-black/50 text-white text-xs"
+                >
+                  {isDisconnected ? 'Offline' : isReconnecting ? 'Reconnecting...' : 'Live'}
+                </Badge>
+              </div>
+              {!isDisconnected && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => handleMaximizeScreen(userId, e)}
+                  className="text-white hover:bg-white/20"
+                >
+                  {isMaximized ? (
+                    <Minimize2 className="h-4 w-4" />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
+            </div>
+
+            {/* Info bar */}
+            <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-gray-900/90 to-transparent z-10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Avatar className="h-8 w-8 border-2 border-white/20">
+                    <AvatarFallback className="bg-gray-700 text-white">
+                      {student?.firstName?.[0]}
+                      {student?.lastName?.[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="text-white">
+                    <p className="text-sm font-medium leading-none">
+                      {student?.firstName} {student?.lastName}
+                    </p>
+                    <p className="text-xs text-gray-300">{student?.schoolId}</p>
+                  </div>
+                </div>
+                {!isDisconnected && (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-300">
+                      {screenState?.lastUpdate
+                        ? formatDistance(screenState.lastUpdate, new Date(), {
+                            addSuffix: true,
+                          })
+                        : 'Not connected'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
+          {/* Maximized view close button */}
           {isMaximized && (
-            <div className="absolute top-0 left-0 right-0 bg-black/50 p-2 flex justify-end">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMaximizedScreen(null);
-                }}
-                className="text-white hover:bg-white/20"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMaximizedScreen(null)}
+              className="absolute top-4 right-4 text-white hover:bg-white/20 z-20"
+            >
+              <X className="h-4 w-4" />
+            </Button>
           )}
         </div>
       );
     },
-    [studentScreenState, isReconnecting, maximizedScreen, selectedStudents, toggleStudentSelection, handleMaximizeScreen],
+    [
+      studentScreenState,
+      isReconnecting,
+      maximizedScreen,
+      selectedStudents,
+      toggleStudentSelection,
+      handleMaximizeScreen,
+      activeUsers, // Added activeUsers dependency
+    ],
   );
 
   const handleStartScreenShare = async () => {
@@ -1499,13 +1593,12 @@ export const TeacherConsole = () => {
 
   const handleRefreshConnections = useCallback(() => {
     if (selectedSubject && socket) {
-
       activeUsers.forEach((activeUser) => {
         socket.emit('refresh-connections', {
           deviceId: activeUser.deviceId,
         });
       });
-    
+
       toast({
         title: 'Refreshing Connections',
         description: 'Checking for active student connections...',
@@ -1520,20 +1613,67 @@ export const TeacherConsole = () => {
   const [isStudentListMaximized, setIsStudentListMaximized] = useState(false);
 
   const handleLayoutChange = (option: string) => {
-    setLayoutOption(option);
-    setIsLayoutDialogOpen(false);
+    setLayoutSettings((prev) => ({
+      ...prev,
+      option: option as LayoutSettings['option'],
+    }));
   };
 
   const handleMaxTilesChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setMaxTiles(Number(event.target.value));
+    const value = Math.max(1, Math.min(16, Number(event.target.value)));
+    setLayoutSettings((prev) => ({
+      ...prev,
+      maxTiles: value,
+    }));
   };
 
-  const handleHideNoVideoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setHideNoVideo(event.target.checked);
+  const handleHideNoVideoChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    setLayoutSettings((prev) => ({
+      ...prev,
+      hideNoVideo: event.target.checked,
+    }));
+  };
+
+  const [layoutSettings, setLayoutSettings] = useState<LayoutSettings>({
+    option: 'Auto',
+    maxTiles: 4,
+    hideNoVideo: false,
+  });
+
+  const getGridLayout = (totalStudents: number, layout: LayoutSettings) => {
+    switch (layout.option) {
+      case 'Tiled':
+        return {
+          gridTemplateColumns: `repeat(${Math.min(Math.ceil(Math.sqrt(totalStudents)), Math.ceil(layout.maxTiles / 2))}, 1fr)`,
+        };
+      case 'Spotlight':
+        return {
+          gridTemplateColumns: '2fr 1fr',
+          gridTemplateRows: 'auto',
+          gridAutoRows: '1fr',
+        };
+      case 'Sidebar':
+        return {
+          gridTemplateColumns: '3fr 1fr',
+          gridAutoRows: '1fr',
+        };
+      default: // Auto
+        return totalStudents <= 2
+          ? { gridTemplateColumns: 'repeat(2, 1fr)' }
+          : totalStudents <= 4
+            ? { gridTemplateColumns: 'repeat(2, 1fr)' }
+            : { gridTemplateColumns: 'repeat(3, 1fr)' };
+    }
   };
 
   return (
-    <SidebarProvider>
+    <SidebarProvider
+      defaultOpen={false}
+      open={isSidebarOpen}
+      onOpenChange={setIsSidebarOpen}
+    >
       <div className="min-h-screen w-screen bg-[#EAEAEB] flex">
         <Sidebar className="border-r bg-white w-64">
           <SidebarHeader>
@@ -2057,8 +2197,8 @@ export const TeacherConsole = () => {
               </div>
             </div>
           </div>
-          {/* <main className="px-4 sm:px-6 lg:px-8 py-4 relative h-[calc(100vh-8rem)] overflow-y-auto"> */}
-          <main className="relative h-[calc(100vh-8rem)] overflow-y-auto">
+          <main className="px-4 sm:px-6 lg:px-8 py-4 relative h-[calc(100vh-8rem)] overflow-y-auto">
+            {/* <main className="relative h-[calc(100vh-8rem)] overflow-y-auto"> */}
             {isLoading ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
@@ -2137,13 +2277,17 @@ export const TeacherConsole = () => {
                 </div>
               </div>
             )}
-            <div className={`bg-white rounded-lg shadow p-4 border-l-4 border-[#EBC42E] flex-1 ${
-              isStudentListMaximized ? 'fixed inset-4 z-50 bg-white' : ''
-            }`}>
+            <div
+              className={`bg-white rounded-lg shadow p-4 border-l-4 border-[#EBC42E] flex-1 ${
+                isStudentListMaximized ? 'fixed inset-4 z-50 bg-white' : ''
+              }`}
+            >
               <div className="flex items-center justify-between mb-4">
-                <div 
+                <div
                   className="flex items-center space-x-2 cursor-pointer"
-                  onClick={() => setIsStudentListExpanded(!isStudentListExpanded)}
+                  onClick={() =>
+                    setIsStudentListExpanded(!isStudentListExpanded)
+                  }
                 >
                   {isStudentListExpanded ? (
                     <ChevronDown className="h-5 w-5 text-gray-500" />
@@ -2152,15 +2296,19 @@ export const TeacherConsole = () => {
                   )}
                   <div className="flex items-center space-x-2">
                     <Users className="h-4 w-4 text-gray-700" />
-                    <h2 className="text-lg font-semibold text-gray-900">Student List</h2>
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      Student List
+                    </h2>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center space-x-2">
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setIsStudentListMaximized(!isStudentListMaximized)}
+                    onClick={() =>
+                      setIsStudentListMaximized(!isStudentListMaximized)
+                    }
                     className="hover:bg-gray-100"
                   >
                     {isStudentListMaximized ? (
@@ -2181,7 +2329,10 @@ export const TeacherConsole = () => {
               </div>
 
               {isStudentListExpanded && (
-                <Tabs defaultValue="active" className={`w-full ${isStudentListMaximized ? 'h-[calc(100vh-6rem)]' : ''}`}>
+                <Tabs
+                  defaultValue="active"
+                  className={`w-full ${isStudentListMaximized ? 'h-[calc(100vh-6rem)]' : ''}`}
+                >
                   <div className="flex items-center justify-between mb-2">
                     <TabsList className="grid grid-cols-2 rounded-full">
                       <TabsTrigger className="rounded-full" value="active">
@@ -2212,7 +2363,7 @@ export const TeacherConsole = () => {
                   </div>
 
                   <TabsContent value="active">
-                    <div className="rounded-md border p-2">
+                    <div className="rounded-md border p-2 ">
                       {activeUsers.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-[calc(100vh-28rem)]">
                           <Users className="h-12 w-12 mb-2 text-gray-400" />
@@ -2224,18 +2375,75 @@ export const TeacherConsole = () => {
                           </p>
                         </div>
                       ) : (
-                        <div className="grid grid-cols-2 gap-4 auto-rows-fr h-full">
+                        <div
+                          className="grid gap-4 auto-rows-fr h-full"
+                          style={getGridLayout(
+                            activeUsers.length,
+                            layoutSettings,
+                          )}
+                        >
                           {subjectRecords
                             .filter((record) =>
                               activeUsers.some(
                                 (user) => user.userId === record.userId,
                               ),
                             )
-                            .map((record) => {
+                            .map((record, index) => {
+                              // Check if we have the student info
                               const student = studentInfo[record.userId];
-                              return student
-                                ? renderStudentScreen(record.userId, student)
-                                : null;
+
+                              // If we don't have student info yet, show a loading state
+                              if (!student) {
+                                return (
+                                  <div
+                                    key={record.userId}
+                                    className="relative group rounded-xl overflow-hidden transition-all duration-300 h-full bg-gray-900"
+                                  >
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-800/95">
+                                      <div className="flex flex-col items-center space-y-6 p-4">
+                                        <div className="relative">
+                                          <Avatar className="h-24 w-24 border-2 border-gray-700">
+                                            <AvatarFallback className="bg-gray-700 text-gray-300 text-3xl">
+                                              ...
+                                            </AvatarFallback>
+                                          </Avatar>
+                                          <div className="absolute -bottom-2 -right-2 bg-gray-700 rounded-full p-2.5 border-2 border-gray-800">
+                                            <MonitorOff className="h-5 w-5 text-gray-400" />
+                                          </div>
+                                        </div>
+                                        <div className="text-center space-y-2">
+                                          <p className="text-gray-300 font-medium text-lg">
+                                            Loading Student Info...
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              // Render the student screen with the info we have
+                              const isSpotlighted =
+                                layoutSettings.option === 'Spotlight' &&
+                                index === 0;
+                              const isSidebar =
+                                layoutSettings.option === 'Sidebar' &&
+                                index !== 0;
+
+                              return (
+                                <div
+                                  key={record.userId}
+                                  className={`${
+                                    isSpotlighted
+                                      ? 'col-span-2 row-span-2'
+                                      : isSidebar
+                                        ? 'col-start-2'
+                                        : ''
+                                  }`}
+                                >
+                                  {renderStudentScreen(record.userId, student)}
+                                </div>
+                              );
                             })}
                         </div>
                       )}
@@ -2293,7 +2501,7 @@ export const TeacherConsole = () => {
               )}
             </div>
             {isStudentListMaximized && (
-              <div 
+              <div
                 className="fixed inset-0 bg-black/50 z-40"
                 onClick={() => setIsStudentListMaximized(false)}
               />
@@ -2385,42 +2593,65 @@ export const TeacherConsole = () => {
                 <div className="grid gap-4 py-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium leading-none">
-                      Options
+                      Layout Options
                     </label>
                     <select
-                      value={layoutOption}
+                      value={layoutSettings.option}
                       onChange={(e) => handleLayoutChange(e.target.value)}
                       className="w-full p-2 border rounded"
                     >
-                      <option value="Auto">Auto</option>
-                      <option value="Tiled">Tiled</option>
+                      <option value="Auto">Auto (Recommended)</option>
+                      <option value="Tiled">Tiled Grid</option>
                       <option value="Spotlight">Spotlight</option>
                       <option value="Sidebar">Sidebar</option>
                     </select>
+                    <p className="text-xs text-gray-500">
+                      {layoutSettings.option === 'Auto' &&
+                        'Automatically adjusts based on the number of students'}
+                      {layoutSettings.option === 'Tiled' &&
+                        'Displays students in an equal-sized grid'}
+                      {layoutSettings.option === 'Spotlight' &&
+                        'Features one student prominently with others in sidebar'}
+                      {layoutSettings.option === 'Sidebar' &&
+                        'Shows one main view with others in a vertical sidebar'}
+                    </p>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none">
-                      Maximum tiles to display
-                    </label>
-                    <input
-                      type="number"
-                      value={maxTiles}
-                      onChange={handleMaxTilesChange}
-                      className="w-full p-2 border rounded"
-                      min="1"
-                      max="16"
+                  {layoutSettings.option !== 'Auto' && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium leading-none">
+                        Maximum tiles to display
+                      </label>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="range"
+                          min="1"
+                          max="16"
+                          value={layoutSettings.maxTiles}
+                          onChange={handleMaxTilesChange}
+                          className="w-full"
+                        />
+                        <span className="text-sm text-gray-600 min-w-[2rem] text-center">
+                          {layoutSettings.maxTiles}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="hide-no-video"
+                      checked={layoutSettings.hideNoVideo}
+                      onCheckedChange={(checked) =>
+                        handleHideNoVideoChange({
+                          target: { checked: checked === true },
+                        } as any)
+                      }
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none">
-                      Hide tiles without a video
+                    <label
+                      htmlFor="hide-no-video"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Hide tiles without video
                     </label>
-                    <input
-                      type="checkbox"
-                      checked={hideNoVideo}
-                      onChange={handleHideNoVideoChange}
-                      className="w-4 h-4"
-                    />
                   </div>
                 </div>
                 <DialogFooter>
@@ -2458,7 +2689,7 @@ export const TeacherConsole = () => {
             </div>
           )}
           <FileTransferProgress />
-         
+
           {maximizedScreen && (
             <div
               className="fixed inset-0 bg-black/50 z-40"

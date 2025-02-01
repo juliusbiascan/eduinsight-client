@@ -121,7 +121,7 @@ export default function () {
     socket.on('launch-webpage', ({ url }) => {
       WindowManager.get(
         WindowManager.WINDOW_CONFIGS.dashboard_window.id,
-      ).close();
+      ).minimize();
       shell.openExternal(url);
     });
 

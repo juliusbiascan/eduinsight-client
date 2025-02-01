@@ -435,25 +435,176 @@ export const StudentConsole: React.FC = () => {
       mounted = false;
     };
   }, [user, socket, isConnected, fetchSubjects]);
+  // useEffect(() => {
+  //   // Peer connection setup effect
+  //   const userId = selectedSubject?.userId; // Make sure to use teacherId instead of userId
+  //   if (!userId) {
+  //     console.log('No teacher found for this subject');
+  //     return;
+  //   }
+
+  //   // Cleanup previous peer connection
+  //   if (peerRef.current) {
+  //     peerRef.current.destroy();
+  //     peerRef.current = null;
+  //   }
+
+  //   // Stop any existing media streams
+  //   if (mediaStreamRef.current) {
+  //     mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+  //     mediaStreamRef.current = null;
+  //   }
+
+  //   api.database.getActiveUserByUserId(userId).then((activeUser) => {
+  //     if (!activeUser || !user?.id) {
+  //       console.error('No active user found or missing user ID');
+  //       return;
+  //     }
+
+  //     console.log(
+  //       'Creating new peer connection with host:',
+  //       activeUser.device.devHostname,
+  //     );
+
+  //     const newPeer = new PeerClient(user.id, {
+  //       host: activeUser.device.devHostname,
+  //       port: 9001,
+  //       path: '/eduinsight',
+  //       config: {
+  //         iceServers: [
+  //           { urls: 'stun:stun.l.google.com:19302' },
+  //           { urls: 'stun:stun1.l.google.com:19302' },
+  //         ],
+  //       },
+  //     });
+
+  //     newPeer.on('open', async (id) => {
+  //       console.log('Peer connection established with ID:', id);
+  //       const screen = await api.screen.getScreenSourceId();
+  //       const mediaStream = await (navigator.mediaDevices as any).getUserMedia({
+  //         audio: false,
+  //         video: {
+  //           mandatory: {
+  //             chromeMediaSource: 'desktop',
+  //             chromeMediaSourceId: screen,
+  //             maxWidth: 1920,
+  //             maxHeight: 1080,
+  //             frameRate: { ideal: 30, max: 60 },
+  //           },
+  //         },
+  //       });
+
+  //       // Store stream reference for cleanup
+  //       mediaStreamRef.current = mediaStream;
+
+  //       const call = newPeer.call(activeUser.userId, mediaStream);
+  //       console.log('Screen share call:', call);
+
+  //       // Add call close handler
+  //       call.on('close', () => {
+  //         console.log('Call closed, cleaning up media stream');
+  //         if (mediaStreamRef.current) {
+  //           mediaStreamRef.current.getTracks().forEach(track => track.stop());
+  //           mediaStreamRef.current = null;
+  //         }
+  //         if (videoRef.current) {
+  //           if (videoRef.current.srcObject) {
+  //             const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+  //             tracks.forEach(track => track.stop());
+  //           }
+  //           videoRef.current.srcObject = null;
+  //         }
+  //       });
+
+  //       call.on('error', (err) => {
+  //         console.error(`Call error for user ${activeUser.userId}:`, err);
+  //       });
+
+  //       peerRef.current = newPeer;
+  //     });
+
+  //     // Rest of the peer connection code remains the same...
+  //     // (Keep all the existing event handlers for 'call', 'error', 'disconnected', etc.)
+
+  //     return () => {
+  //       // Cleanup function
+  //       if (mediaStreamRef.current) {
+  //         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+  //         mediaStreamRef.current = null;
+  //       }
+  //       if (peerRef.current) {
+  //         console.log('Cleaning up peer connection');
+  //         if (videoRef.current && videoRef.current.srcObject) {
+  //           const tracks = (
+  //             videoRef.current.srcObject as MediaStream
+  //           ).getTracks();
+  //           tracks.forEach((track) => track.stop());
+  //           videoRef.current.srcObject = null;
+  //         }
+  //         peerRef.current.destroy();
+  //         peerRef.current = null;
+  //       }
+  //       setShowVideo(false); // Hide video when cleaning up
+  //     };
+  //   });
+  // }, [selectedSubject, user?.id]); // Update dependencies to include selectedSubject
+
   useEffect(() => {
     // Peer connection setup effect
-    const userId = selectedSubject?.userId; // Make sure to use teacherId instead of userId
+    const userId = selectedSubject?.userId;
     if (!userId) {
       console.log('No teacher found for this subject');
       return;
     }
 
-    // Cleanup previous peer connection
-    if (peerRef.current) {
-      peerRef.current.destroy();
-      peerRef.current = null;
-    }
+    let reconnectTimeout: NodeJS.Timeout;
+    const RECONNECT_DELAY = 2000; // 2 seconds
+    const backoffMultiplier = 1.5; // Increase delay by 50% each attempt
+    let currentDelay = RECONNECT_DELAY;
 
-    // Stop any existing media streams
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    }
+    const initializeCall = async (peer: PeerClient, activeUser: any) => {
+      const screen = await api.screen.getScreenSourceId();
+      const mediaStream = await (navigator.mediaDevices as any).getUserMedia({
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: screen,
+            maxWidth: 1920,
+            maxHeight: 1080,
+            frameRate: { ideal: 30, max: 60 },
+          },
+        },
+      });
+
+      mediaStreamRef.current = mediaStream;
+      const call = peer.call(activeUser.userId, mediaStream);
+      console.log('Screen share call initiated:', call);
+
+      call.on('close', () => {
+        console.log('Call closed, attempting reconnection...');
+        // Implement exponential backoff
+        currentDelay = Math.min(currentDelay * backoffMultiplier, 30000); // Cap at 30 seconds
+        console.log(`Reconnecting in ${currentDelay/1000} seconds...`);
+        
+        reconnectTimeout = setTimeout(() => {
+          console.log('Attempting reconnection...');
+          initializeCall(peer, activeUser);
+        }, currentDelay);
+      });
+
+      call.on('error', (err) => {
+        console.error(`Call error for user ${activeUser.userId}:`, err);
+        // Reset delay on successful connection
+        currentDelay = RECONNECT_DELAY;
+      });
+
+      // Reset delay on successful connection
+      call.on('stream', () => {
+        console.log('Stream connected successfully');
+        currentDelay = RECONNECT_DELAY;
+      });
+    };
 
     api.database.getActiveUserByUserId(userId).then((activeUser) => {
       if (!activeUser || !user?.id) {
@@ -461,10 +612,7 @@ export const StudentConsole: React.FC = () => {
         return;
       }
 
-      console.log(
-        'Creating new peer connection with host:',
-        activeUser.device.devHostname,
-      );
+      console.log('Creating new peer connection with host:', activeUser.device.devHostname);
 
       const newPeer = new PeerClient(user.id, {
         host: activeUser.device.devHostname,
@@ -478,60 +626,36 @@ export const StudentConsole: React.FC = () => {
         },
       });
 
-      newPeer.on('open', async (id) => {
-        console.log('Peer connection established with ID:', id);
-        const screen = await api.screen.getScreenSourceId();
-        const mediaStream = await (navigator.mediaDevices as any).getUserMedia({
-          audio: false,
-          video: {
-            mandatory: {
-              chromeMediaSource: 'desktop',
-              chromeMediaSourceId: screen,
-              maxWidth: 1920,
-              maxHeight: 1080,
-              frameRate: { ideal: 30, max: 60 },
-            },
-          },
-        });
-
-        // Store stream reference for cleanup
-        mediaStreamRef.current = mediaStream;
-
-        const call = newPeer.call(activeUser.userId, mediaStream);
-        console.log('Screen share call:', call);
-
-        call.on('error', (err) => {
-          console.error(`Call error for user ${activeUser.userId}:`, err);
-        });
-
-        peerRef.current = newPeer;
+      newPeer.on('open', async () => {
+        console.log('Peer connection established with ID:', user.id);
+        await initializeCall(newPeer, activeUser);
       });
 
-      // Rest of the peer connection code remains the same...
-      // (Keep all the existing event handlers for 'call', 'error', 'disconnected', etc.)
-
-      return () => {
-        // Cleanup function
-        if (mediaStreamRef.current) {
-          mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-          mediaStreamRef.current = null;
-        }
-        if (peerRef.current) {
-          console.log('Cleaning up peer connection');
-          if (videoRef.current && videoRef.current.srcObject) {
-            const tracks = (
-              videoRef.current.srcObject as MediaStream
-            ).getTracks();
-            tracks.forEach((track) => track.stop());
-            videoRef.current.srcObject = null;
-          }
-          peerRef.current.destroy();
-          peerRef.current = null;
-        }
-        setShowVideo(false); // Hide video when cleaning up
-      };
+      peerRef.current = newPeer;
     });
-  }, [selectedSubject, user?.id]); // Update dependencies to include selectedSubject
+
+    return () => {
+      // Cleanup function
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+      }
+      if (peerRef.current) {
+        console.log('Cleaning up peer connection');
+        if (videoRef.current?.srcObject) {
+          const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+          tracks.forEach(track => track.stop());
+          videoRef.current.srcObject = null;
+        }
+        peerRef.current.destroy();
+        peerRef.current = null;
+      }
+      setShowVideo(false);
+    };
+  }, [selectedSubject, user?.id]);
 
   // Add useEffect to fetch downloads on mount
   useEffect(() => {
