@@ -1,5 +1,7 @@
 export enum Config {
-  SOCKET_URL = 'https://eduinsight.systems:4000',
+  // SOCKET_URL = 'https://eduinsight.systems:4000',
+  // DATABASE_URL = 'mysql://eduinsight_user:eduinsight_pass@eduinsight.systems:3306/eduinsight',
+  SOCKET_URL = 'https://socket.eduinsight.systems',
   DATABASE_URL = 'mysql://eduinsight_user:eduinsight_pass@eduinsight.systems:3306/eduinsight',
 }
 
