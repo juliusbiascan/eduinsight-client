@@ -15,6 +15,7 @@ const deviceId = store.get('deviceId') as string;
 const labId = store.get('labId') as string;
 
 function handleOnReady() {
+
   Object.values(IPCHandlers).forEach((handler) => handler());
   Store.initRenderer();
 
@@ -75,7 +76,7 @@ function handleOnReady() {
     app.quit()
   } else {
     app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
-     
+
       handleSecondinstance();
     })
 
@@ -83,7 +84,7 @@ function handleOnReady() {
       handleOnReady();
     });
   }
-  
+
   app.on('window-all-closed', () => {
     if (!store.get('deviceId')) app.quit();
   });

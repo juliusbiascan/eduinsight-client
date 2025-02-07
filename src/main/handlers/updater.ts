@@ -36,12 +36,12 @@ export default function () {
    * @param {Electron.IpcMainEvent} event - The IPC event object.
    */
   ipcMain.on(IPCRoute.UPDATER_START, (event) => {
-    // bail early if we're in dev mode
-    // eslint-disable-next-line no-constant-condition
-    if (true) {
-      event.reply(IPCRoute.UPDATER_NO_UPDATE);
-      return;
-    }
+    // // bail early if we're in dev mode
+    // // eslint-disable-next-line no-constant-condition
+    // if (true) {
+    //   event.reply(IPCRoute.UPDATER_NO_UPDATE);
+    //   return;
+    // }
 
     /**
      * Configure the auto updater with the feed URL.
@@ -55,6 +55,7 @@ export default function () {
 
     // start checking for updates
     log.info('Checking for updates: %s', autoUpdater.getFeedURL());
+    
     autoUpdater.checkForUpdates();
 
     /**

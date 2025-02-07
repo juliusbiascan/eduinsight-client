@@ -19,20 +19,23 @@ const config: ForgeConfig = {
     asar: {
       unpack: '**/+(*.node|*.dll|)',
     },
+    // win32metadata: {
+    //    'application-manifest': path.resolve(__dirname, 'app.manifest'),
+    // },
     name: 'EduInsight Client',
     icon: path.resolve(__dirname, 'images/app-icon.ico'),
     appBundleId: 'io.eduinsight.client',
     appCopyright: 'Copyright © 2024',
-    extraResource: [
-      'node_modules/@paymoapp/electron-shutdown-handler/build/Release/PaymoWinShutdownHandler.node',
-    ],
+    appVersion: '1.0.0',
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({
-      setupExe: 'EduInsight Client Setup.exe',
+      setupExe: 'eduinsight-windows.exe',
       setupIcon: path.resolve(__dirname, 'images/app-icon.ico'),
       loadingGif: path.resolve(__dirname, 'images/setup.gif'),
+      // certificateFile: './eduinsight_systems.pfx',
+      // certificatePassword: 'jlzk21dev',
     }),
     new MakerWix({
       name: 'EduInsight Client',
@@ -42,6 +45,7 @@ const config: ForgeConfig = {
       manufacturer: 'Julius Biascan',
       exe: 'EduInsight Client',
       upgradeCode: '8a22b26c-3275-41db-9faa-2db883f25d63',
+
       ui: {
         chooseDirectory: true,
       },
@@ -49,11 +53,25 @@ const config: ForgeConfig = {
         autoLaunch: true,
         autoUpdate: true,
       },
-    
+      // certificateFile: './eduinsight_systems.pfx',
+      // certificatePassword: 'jlzk21dev'
     }),
     new MakerZIP({}, ['darwin']),
     new MakerRpm({}),
     new MakerDeb({}),
+  ],
+  publishers:[
+    {
+      name: '@electron-forge/publisher-github',
+      config: {
+        repository: {
+          owner: 'juliusbiascan',
+          name: 'eduinsight-client',
+        },
+        prerelease: false,
+        draft: false,
+      },
+    },
   ],
   plugins: [
     new AutoUnpackNativesPlugin({}),

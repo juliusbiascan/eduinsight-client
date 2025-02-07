@@ -3,7 +3,7 @@ import http from 'http';
 import https from 'https';
 import { app, BrowserWindow, ipcMain, shell, Notification, desktopCapturer } from 'electron';
 import { Database, WindowManager } from '../lib';
-import { Config, IPCRoute, WindowIdentifier } from '@/shared/constants';
+import { IPCRoute, WindowIdentifier } from '@/shared/constants';
 import { startMonitoring } from '../lib/monitoring';
 import { createTray } from '../lib/tray-menu';
 import fs from 'fs';
@@ -14,11 +14,17 @@ import { FirewallManager } from '../lib/firewall';
 export default function () {
   const store = StoreManager.getInstance();
   const deviceId = store.get('deviceId') as string;
+  const socketUrl = store.get('socketUrl') as string;
   const labId = store.get('labId') as string;
 
   function setupSocketEventListeners({ id }: { id: string }) {
 
-    const socket = io(Config.SOCKET_URL, {
+    if (!socketUrl) {
+      console.error('Socket URL not found');
+      return;
+    }
+
+    const socket = io(socketUrl, {
       rejectUnauthorized: false,
       transports: ['polling', 'websocket'], // Try polling first, then websocket
       reconnection: true,
@@ -219,11 +225,11 @@ export default function () {
           title: 'Screen Sharing',
           body: 'Screen sharing has been started',
         }).show();
-    
+
         if (captureIntervals) {
           clearInterval(captureIntervals);
         }
-    
+
         let lastCaptureTime = Date.now();
         let skippedFrames = 0;
         let frameRate = settings?.targetFPS || 20;
@@ -232,19 +238,19 @@ export default function () {
         const targetResolution = settings?.resolution || { width: 854, height: 480 };
         let compressionQuality = settings?.compression || 0.8;
         let lastNetworkDelay = 0;
-    
+
         const startCapture = async () => {
           captureIntervals = setInterval(async () => {
             try {
               const now = Date.now();
               const frameDelay = now - lastCaptureTime;
-              
+
               // Skip frame if we're behind schedule
               if (frameDelay < (1000 / frameRate)) {
                 skippedFrames++;
                 return;
               }
-    
+
               // Adapt quality based on performance
               if (skippedFrames > 10) {
                 frameRate = Math.max(minFrameRate, frameRate - 2);
@@ -253,27 +259,27 @@ export default function () {
                 frameRate = Math.min(maxFrameRate, frameRate + 1);
                 compressionQuality = Math.min(0.9, compressionQuality + 0.05);
               }
-    
+
               const sources = await desktopCapturer.getSources({
                 types: ['screen'],
                 thumbnailSize: targetResolution
               });
-    
+
               const primaryDisplay = sources[0];
               if (!primaryDisplay) throw new Error('No display found');
-    
+
               // Compress image with dynamic quality
               const pngBuffer = primaryDisplay.thumbnail.toPNG({
                 scaleFactor: Math.round(compressionQuality * 100),
               });
-    
+
               // Check buffer size and skip if too large
               if (pngBuffer.length > 1024 * 1024) {
                 compressionQuality = Math.max(0.5, compressionQuality - 0.1);
                 skippedFrames++;
                 return;
               }
-    
+
               const emitStart = Date.now();
               socket.emit('screen-data', {
                 userId,
@@ -291,50 +297,50 @@ export default function () {
               }, () => {
                 // Measure network delay on acknowledgment
                 lastNetworkDelay = Date.now() - emitStart;
-                
+
                 // Adapt frame rate based on network delay
                 if (lastNetworkDelay > 200) {
                   frameRate = Math.max(minFrameRate, frameRate - 1);
                 }
               });
-    
+
               lastCaptureTime = now;
               skippedFrames = 0;
-    
+
             } catch (error) {
               console.error('Screen capture error:', error);
               handleScreenError(error, userId, subjectId, socket);
             }
           }, 1000 / maxFrameRate);
         };
-    
+
         await startCapture();
-    
+
         // Add cleanup on window/tab close
         window.addEventListener('beforeunload', () => {
           if (captureIntervals) {
             clearInterval(captureIntervals);
           }
         });
-    
+
       } catch (error) {
         console.error('Failed to start screen capture:', error);
         handleScreenError(error, userId, subjectId, socket);
       }
     });
-    
+
     socket.on('hide-screen', ({ deviceId, userId }) => {
       try {
         if (captureIntervals) {
           clearInterval(captureIntervals);
           captureIntervals = null;
         }
-    
+
         new Notification({
           title: 'Screen Sharing',
           body: 'Screen sharing has been stopped',
         }).show();
-    
+
         socket.emit('screen-share-ended', {
           deviceId,
           userId,
@@ -344,9 +350,9 @@ export default function () {
         console.error('Error stopping screen share:', error);
       }
     });
-    
+
     // Add helper functions
-    
+
     const handleScreenError = (error: unknown, userId: string, subjectId: string, socket: any) => {
       socket.emit('screen-share-error', {
         error: error instanceof Error ? error.message : 'Screen capture failed',
@@ -415,7 +421,7 @@ export default function () {
         captureInterval = setInterval(async () => {
           const startTime = Date.now();
           const buffer = await capture();
-          
+
           if (!buffer) return;
 
           const metrics = {
@@ -448,7 +454,7 @@ export default function () {
       // Cleanup is handled by show-screen's cleanup function
       socket.emit('screen-share-ended');
     });
-    
+
     // Helper functions
     socket.on('show-screen', async ({ userId, subjectId, settings }) => {
       try {
@@ -578,6 +584,9 @@ export default function () {
           // Check if the response contains a valid Socket.IO handshake
           const isValidResponse = data.startsWith('0{') && data.includes('"sid":');
 
+          if (res.statusCode === 200 && isValidResponse) {
+            store.set('socketUrl', url);
+          }
           resolve(res.statusCode === 200 && isValidResponse);
         });
       });

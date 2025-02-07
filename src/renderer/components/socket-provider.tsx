@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { initSocket } from '../lib/socket';
 import { Socket } from 'socket.io-client';
-import { Config } from '@/shared/constants';
 
 interface SocketContextType {
   socket: Socket | null;
@@ -14,6 +13,8 @@ const SocketContext = createContext<SocketContextType | null>(null);
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
   
+  const [socketUrl , setSocketUrl] = useState<string>('');
+
   const [socketState, setSocketState] = useState<SocketContextType>({
     socket: null,
     isConnected: false,
@@ -21,12 +22,26 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     error: "",
   });
 
+  useEffect(() => {
+    const fetchSocketUrl = async () => {
+      const socketUrl = await api.store.get('socketUrl');
+      if (!socketUrl) {
+        throw new Error('Socket URL not found');
+      }
+      setSocketUrl(socketUrl);
+    };
+    fetchSocketUrl();
+  }, []);
 
   useEffect(() => {
    
-    console.log('Connecting to server:', Config.SOCKET_URL);
+    if (!socketUrl) {
+      return;
+    }
+
+    console.log('Connecting to server:', socketUrl);
     
-    const socketInstance = initSocket(Config.SOCKET_URL);
+    const socketInstance = initSocket(socketUrl);
 
     function onConnect() {
       console.log('Connected to server');
@@ -71,7 +86,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       socketInstance.off("connect_error", onConnectError);
       socketInstance.disconnect();
     };
-  }, []);
+  }, [socketUrl]);
 
   return (
     <SocketContext.Provider value={socketState}>

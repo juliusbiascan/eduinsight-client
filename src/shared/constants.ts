@@ -1,17 +1,16 @@
-export enum Config {
-  // SOCKET_URL = 'https://eduinsight.systems:4000',
-  // DATABASE_URL = 'mysql://eduinsight_user:eduinsight_pass@eduinsight.systems:3306/eduinsight',
-  SOCKET_URL = 'https://socket.eduinsight.systems',
-  DATABASE_URL = 'mysql://eduinsight_user:eduinsight_pass@eduinsight.systems:3306/eduinsight',
-}
-
 export enum FileConfig {
   CHUNK_SIZE = 512 * 1024,
   MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024,
 }
+
+export enum ConnectionMode {
+  Local = 'LOCAL',
+  Remote = 'REMOTE'
+}
+
 /**
  * Browser Window unique identifier names.
- *
+ *k
  * @enum
  */
 export enum WindowIdentifier {
