@@ -5,17 +5,17 @@
  * @module
  */
 import log from 'electron-log';
-//import is from 'electron-is';
-import AppInfo from 'package.json';
+import is from 'electron-is';
+//import AppInfo from 'package.json';
 import { app, autoUpdater, ipcMain } from 'electron';
 import { IPCRoute } from '@/shared/constants';
 
-/**
- * Repo information extracted from the package info file.
- *
- * @constant
- */
-const repoInfo = AppInfo.homepage.match(/github\.com\/([\w-]+)\/([\w-]+)/);
+// /**
+//  * Repo information extracted from the package info file.
+//  *
+//  * @constant
+//  */
+// const repoInfo = AppInfo.homepage.match(/github\.com\/([\w-]+)\/([\w-]+)/);
 
 /**
  * Register the IPC event handlers for the auto-updater.
@@ -36,20 +36,19 @@ export default function () {
    * @param {Electron.IpcMainEvent} event - The IPC event object.
    */
   ipcMain.on(IPCRoute.UPDATER_START, (event) => {
-    // // bail early if we're in dev mode
-    // // eslint-disable-next-line no-constant-condition
-    // if (true) {
-    //   event.reply(IPCRoute.UPDATER_NO_UPDATE);
-    //   return;
-    // }
+    // bail early if we're in dev mode
+    // eslint-disable-next-line no-constant-condition
+    if (is.dev()) {
+      event.reply(IPCRoute.UPDATER_NO_UPDATE);
+      return;
+    }
 
     /**
      * Configure the auto updater with the feed URL.
      */
     autoUpdater.setFeedURL({
       url:
-        'https://update.electronjs.org/' +
-        `${repoInfo.groups.owner}/${repoInfo.groups.repo}` +
+        'https://update.electronjs.org/juliusbiascan/eduinsight-client' +
         `${process.platform}-${process.arch}/${app.getVersion()}`,
     });
 

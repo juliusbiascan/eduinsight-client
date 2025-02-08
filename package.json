@@ -2,7 +2,7 @@
   "name": "eduinsight-client",
   "productName": "eduinsight-client",
   "version": "1.0.0",
-  "description": "Eduinsight Client for monitoring teacher and student's lab activities",
+  "description": "Eduinsight client for monitoring teacher and student's lab activities",
   "homepage": "https://github.com/juliusbiascan/eduinsight-client",
   "main": ".webpack/main",
   "scripts": {
