@@ -15,6 +15,7 @@ export const plugins = [
     LOCAL_DATABASE_URL: process.env.LOCAL_DATABASE_URL,
     REMOTE_SOCKET_URL: process.env.REMOTE_SOCKET_URL,
     REMOTE_DATABASE_URL: process.env.REMOTE_DATABASE_URL,
+    AUTH_TOKEN: process.env.AUTH_TOKEN,
   }),
   new ForkTsCheckerWebpackPlugin({
     logger: 'webpack-infrastructure',

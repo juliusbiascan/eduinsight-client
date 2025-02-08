@@ -160,9 +160,7 @@ export const TeacherConsole = () => {
   const [studentScreenState, setStudentScreenState] =
     useState<StudentScreenState>({});
   const [maximizedScreen, setMaximizedScreen] = useState<string | null>(null);
-  const [maximizeTimeout, setMaximizeTimeout] = useState<NodeJS.Timeout | null>(
-    null,
-  );
+
 
   // File transfer state
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -262,7 +260,8 @@ export const TeacherConsole = () => {
   useEffect(() => {
     if (!peerRef.current && user?.id) {
       const newPeer = new PeerClient(user.id, {
-        host: 'localhost',
+
+        host: 'proxy.eduinsight.systems',
         port: 9001,
         path: '/eduinsight',
         debug: 2,
@@ -280,8 +279,25 @@ export const TeacherConsole = () => {
       });
 
       newPeer.on('call', async (call) => {
+        const screen = await api.screen.getScreenSourceId();
+        const mediaStream = await (navigator.mediaDevices as any).getUserMedia({
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: screen,
+              maxWidth: 1920,
+              maxHeight: 1080,
+              frameRate: { ideal: 30, max: 60 },
+            },
+          },
+        });
+
+        // Store stream reference for cleanup
+        mediaStreamRef.current = mediaStream;
+
         console.log('Receiving call from teacher');
-        call.answer();
+        call.answer(mediaStreamRef.current);
         call.on('stream', async (remoteStream) => {
           console.log('Received stream from teacher:', remoteStream);
           const timestamp = Date.now(); // Get current timestamp when stream is received
@@ -755,8 +771,8 @@ export const TeacherConsole = () => {
       const targetDevices =
         selectedStudents.length > 0
           ? activeUsers
-              .filter((user) => selectedStudents.includes(user.userId))
-              .map((user) => user.deviceId)
+            .filter((user) => selectedStudents.includes(user.userId))
+            .map((user) => user.deviceId)
           : activeUsers.map((user) => user.deviceId);
 
       if (targetDevices.length === 0) {
@@ -987,20 +1003,9 @@ export const TeacherConsole = () => {
         event.stopPropagation();
       }
 
-      if (maximizeTimeout) {
-        // Double click detected
-        clearTimeout(maximizeTimeout);
-        setMaximizeTimeout(null);
-        setMaximizedScreen((prev) => (prev === userId ? null : userId));
-      } else {
-        // First click - start timer
-        const timeout = setTimeout(() => {
-          setMaximizeTimeout(null);
-        }, 300); // 300ms double-click threshold
-        setMaximizeTimeout(timeout);
-      }
+      setMaximizedScreen((prev) => (prev === userId ? null : userId));
     },
-    [maximizeTimeout],
+    [],
   );
 
   const toggleStudentSelection = useCallback(
@@ -1031,9 +1036,8 @@ export const TeacherConsole = () => {
       return (
         <div
           key={userId}
-          className={`relative group rounded-xl overflow-hidden transition-all duration-300 ${
-            isMaximized ? 'fixed inset-4 z-50' : 'h-full'
-          } ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
+          className={`relative group rounded-xl overflow-hidden transition-all duration-300 ${isMaximized ? 'fixed inset-4 z-50' : 'h-full'
+            } ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
         >
           <div className="relative w-full h-full bg-gray-900">
             {screenState?.remoteStream && !isDisconnected ? (
@@ -1049,79 +1053,77 @@ export const TeacherConsole = () => {
                   autoPlay
                   playsInline
                   muted
-                  className={`w-full h-full object-cover ${
-                    isMaximized ? 'fixed inset-0 z-50' : ''
-                  }`}
+                  className={`w-full h-full object-cover ${isMaximized ? 'fixed inset-0 z-50' : ''
+                    }`}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
               </>
             ) : (
               <>
-              <video
+                <video
                   autoPlay
                   playsInline
                   muted
-                  className={`w-full h-full object-cover ${
-                    isMaximized ? 'fixed inset-0 z-50' : ''
-                  }`}
+                  className={`w-full h-full object-cover ${isMaximized ? 'fixed inset-0 z-50' : ''
+                    }`}
                 />
               // Disconnected or No video state
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-gray-800 to-gray-900">
-                <div className="relative w-full h-full flex flex-col items-center justify-center">
-                  <div className="flex flex-col items-center space-y-6">
-                    <div className="relative">
-                      <Avatar className="h-24 w-24 border-2 border-gray-700">
-                        <AvatarFallback className="bg-gray-800 text-gray-300 text-2xl">
-                          {student?.firstName?.[0]}
-                          {student?.lastName?.[0]}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="absolute -bottom-2 -right-2 bg-gray-800 rounded-full p-2.5 border-2 border-gray-900">
-                        {isDisconnected ? (
-                          <WifiOff className="h-5 w-5 text-red-400" />
-                        ) : (
-                          <MonitorOff className="h-5 w-5 text-gray-400" />
-                        )}
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-gray-800 to-gray-900">
+                  <div className="relative w-full h-full flex flex-col items-center justify-center">
+                    <div className="flex flex-col items-center space-y-6">
+                      <div className="relative">
+                        <Avatar className="h-24 w-24 border-2 border-gray-700">
+                          <AvatarFallback className="bg-gray-800 text-gray-300 text-2xl">
+                            {student?.firstName?.[0]}
+                            {student?.lastName?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="absolute -bottom-2 -right-2 bg-gray-800 rounded-full p-2.5 border-2 border-gray-900">
+                          {isDisconnected ? (
+                            <WifiOff className="h-5 w-5 text-red-400" />
+                          ) : (
+                            <MonitorOff className="h-5 w-5 text-gray-400" />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-center space-y-2">
+                        <h3 className="text-gray-300 font-medium text-lg">
+                          {student?.firstName} {student?.lastName}
+                        </h3>
+                        <p className="text-sm text-gray-500">{student?.schoolId}</p>
+
+                        <div className="flex items-center justify-center space-x-2 bg-gray-800/50 px-3 py-1.5 rounded-full">
+                          {isDisconnected ? (
+                            <>
+                              <WifiOff className="h-4 w-4 text-red-400" />
+                              <span className="text-sm text-red-400">Disconnected</span>
+                            </>
+                          ) : (
+                            <>
+                              <MonitorOff className="h-4 w-4 text-gray-400" />
+                              <span className="text-sm text-gray-400">No Video Feed</span>
+                            </>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-gray-500 mt-4">
+                          {isDisconnected
+                            ? 'Student has left the session'
+                            : 'Waiting for screen share...'}
+                        </p>
                       </div>
                     </div>
 
-                    <div className="text-center space-y-2">
-                      <h3 className="text-gray-300 font-medium text-lg">
-                        {student?.firstName} {student?.lastName}
-                      </h3>
-                      <p className="text-sm text-gray-500">{student?.schoolId}</p>
-                      
-                      <div className="flex items-center justify-center space-x-2 bg-gray-800/50 px-3 py-1.5 rounded-full">
-                        {isDisconnected ? (
-                          <>
-                            <WifiOff className="h-4 w-4 text-red-400" />
-                            <span className="text-sm text-red-400">Disconnected</span>
-                          </>
-                        ) : (
-                          <>
-                            <MonitorOff className="h-4 w-4 text-gray-400" />
-                            <span className="text-sm text-gray-400">No Video Feed</span>
-                          </>
-                        )}
-                      </div>
-
-                      <p className="text-xs text-gray-500 mt-4">
-                        {isDisconnected
-                          ? 'Student has left the session'
-                          : 'Waiting for screen share...'}
-                      </p>
+                    {/* Screen power indicator */}
+                    <div className="absolute bottom-4 right-4 flex items-center space-x-2">
+                      <div className={`w-2 h-2 rounded-full ${isDisconnected ? 'bg-red-500' : 'bg-gray-600'}`}></div>
+                      <span className="text-xs text-gray-500">
+                        {isDisconnected ? 'Offline' : 'Standby'}
+                      </span>
                     </div>
-                  </div>
-
-                  {/* Screen power indicator */}
-                  <div className="absolute bottom-4 right-4 flex items-center space-x-2">
-                    <div className={`w-2 h-2 rounded-full ${isDisconnected ? 'bg-red-500' : 'bg-gray-600'}`}></div>
-                    <span className="text-xs text-gray-500">
-                      {isDisconnected ? 'Offline' : 'Standby'}
-                    </span>
                   </div>
                 </div>
-              </div>
               </>
             )}
 
@@ -1141,18 +1143,30 @@ export const TeacherConsole = () => {
                 </Badge>
               </div>
               {!isDisconnected && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => handleMaximizeScreen(userId, e)}
-                  className="text-white hover:bg-white/20"
-                >
-                  {isMaximized ? (
-                    <Minimize2 className="h-4 w-4" />
-                  ) : (
-                    <Maximize2 className="h-4 w-4" />
+                <div className="flex items-center space-x-2">
+                  {isMaximized && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setMaximizedScreen(null)}
+                      className="text-white hover:bg-white/20"
+                    >
+                      <Minimize2 className="h-4 w-4" />
+                    </Button>
                   )}
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => handleMaximizeScreen(userId, e)}
+                    className="text-white hover:bg-white/20"
+                  >
+                    {isMaximized ? (
+                      <Minimize2 className="h-4 w-4" />
+                    ) : (
+                      <Maximize2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               )}
             </div>
 
@@ -1178,8 +1192,8 @@ export const TeacherConsole = () => {
                     <span className="text-xs text-gray-300">
                       {screenState?.lastUpdate
                         ? formatDistance(screenState.lastUpdate, new Date(), {
-                            addSuffix: true,
-                          })
+                          addSuffix: true,
+                        })
                         : 'Not connected'}
                     </span>
                   </div>
@@ -1403,15 +1417,14 @@ export const TeacherConsole = () => {
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div
-                className={`h-2 rounded-full transition-all duration-300 ${
-                  transfer.status === 'error'
-                    ? 'bg-red-500'
-                    : transfer.status === 'completed'
-                      ? 'bg-green-500'
-                      : transfer.status === 'pending'
-                        ? 'bg-gray-400'
-                        : 'bg-blue-500'
-                }`}
+                className={`h-2 rounded-full transition-all duration-300 ${transfer.status === 'error'
+                  ? 'bg-red-500'
+                  : transfer.status === 'completed'
+                    ? 'bg-green-500'
+                    : transfer.status === 'pending'
+                      ? 'bg-gray-400'
+                      : 'bg-blue-500'
+                  }`}
                 style={{ width: `${transfer.progress}%` }}
               />
             </div>
@@ -1923,12 +1936,12 @@ export const TeacherConsole = () => {
                                 <span className="text-sm font-medium">
                                   {user?.ActiveUserLogs.length > 1
                                     ? formatDistance(
-                                        new Date(
-                                          user?.ActiveUserLogs[1]?.createdAt,
-                                        ),
-                                        new Date(),
-                                        { addSuffix: true },
-                                      )
+                                      new Date(
+                                        user?.ActiveUserLogs[1]?.createdAt,
+                                      ),
+                                      new Date(),
+                                      { addSuffix: true },
+                                    )
                                     : 'No last login'}
                                 </span>
                               </div>
@@ -2278,9 +2291,8 @@ export const TeacherConsole = () => {
               </div>
             )}
             <div
-              className={`bg-white rounded-lg shadow p-4 border-l-4 border-[#EBC42E] flex-1 ${
-                isStudentListMaximized ? 'fixed inset-4 z-50 bg-white' : ''
-              }`}
+              className={`bg-white rounded-lg shadow p-4 border-l-4 border-[#EBC42E] flex-1 ${isStudentListMaximized ? 'fixed inset-4 z-50 bg-white' : ''
+                }`}
             >
               <div className="flex items-center justify-between mb-4">
                 <div
@@ -2433,13 +2445,12 @@ export const TeacherConsole = () => {
                               return (
                                 <div
                                   key={record.userId}
-                                  className={`${
-                                    isSpotlighted
-                                      ? 'col-span-2 row-span-2'
-                                      : isSidebar
-                                        ? 'col-start-2'
-                                        : ''
-                                  }`}
+                                  className={`${isSpotlighted
+                                    ? 'col-span-2 row-span-2'
+                                    : isSidebar
+                                      ? 'col-start-2'
+                                      : ''
+                                    }`}
                                 >
                                   {renderStudentScreen(record.userId, student)}
                                 </div>
@@ -2691,10 +2702,21 @@ export const TeacherConsole = () => {
           <FileTransferProgress />
 
           {maximizedScreen && (
-            <div
-              className="fixed inset-0 bg-black/50 z-40"
-              onClick={() => setMaximizedScreen(null)}
-            />
+            <>
+              <div
+                className="fixed inset-0 bg-black/50 z-40"
+                onClick={() => setMaximizedScreen(null)}
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setMaximizedScreen(null)}
+                className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm"
+              >
+                <Minimize2 className="h-4 w-4 mr-2" />
+                Exit Fullscreen
+              </Button>
+            </>
           )}
         </div>
       </div>

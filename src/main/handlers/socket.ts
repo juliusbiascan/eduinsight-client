@@ -25,8 +25,8 @@ export default function () {
     }
 
     const socket = io(socketUrl, {
-      rejectUnauthorized: false,
-      transports: ['polling', 'websocket'], // Try polling first, then websocket
+      secure: socketUrl.startsWith('https'),
+      transports: ['websocket'], 
       reconnection: true,
       reconnectionAttempts: Infinity, // Changed from 5 to Infinity
       reconnectionDelay: 1000,

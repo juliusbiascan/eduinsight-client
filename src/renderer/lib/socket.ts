@@ -6,8 +6,8 @@ export const initSocket = (url: string): Socket => {
   if (!socket) {
     
     socket = io(url, {
-      transports: ['websocket', 'polling'], // Allow fallback to polling
-      rejectUnauthorized: false,
+      secure: url.startsWith('https'),
+      transports: ['websocket'], // Allow fallback to polling
       reconnection: true,
       reconnectionAttempts: Infinity, // Keep trying to reconnect
       reconnectionDelay: 1000,

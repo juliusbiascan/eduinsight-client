@@ -5,7 +5,7 @@ import {
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
-import { MakerWix } from '@electron-forge/maker-wix';
+//import { MakerWix } from '@electron-forge/maker-wix';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { WebpackPlugin } from '@electron-forge/plugin-webpack';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
@@ -14,6 +14,8 @@ import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
 import path from 'path';
 
+import packageJson from './package.json';
+const { version } = packageJson;
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
@@ -30,37 +32,35 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({
-      setupExe: 'eduinsight-windows.exe',
+    new MakerSquirrel((arch: string) => ({
+      setupExe: `eduinsight-client-${version}-win32-${arch}-setup.exe`,
       setupIcon: path.resolve(__dirname, 'images/app-icon.ico'),
+      iconUrl: path.resolve(__dirname, 'images/app-icon.ico'),
       loadingGif: path.resolve(__dirname, 'images/setup.gif'),
-      // certificateFile: './eduinsight_systems.pfx',
-      // certificatePassword: 'jlzk21dev',
-    }),
-    new MakerWix({
-      name: 'EduInsight Client',
-      language: 1033,
-      icon: path.resolve(__dirname, 'images/app-icon.ico'),
-      description: 'Computer lab monitoring and control software',
-      manufacturer: 'Julius Biascan',
-      exe: 'EduInsight Client',
-      upgradeCode: '8a22b26c-3275-41db-9faa-2db883f25d63',
+      platforms: ['win32'],
+    })),
+    // new MakerWix({
+    //   name: 'EduInsight Client',
+    //   language: 1033,
+    //   icon: path.resolve(__dirname, 'images/app-icon.ico'),
+    //   description: 'Computer lab monitoring and control software',
+    //   manufacturer: 'Julius Biascan',
+    //   exe: 'EduInsight Client',
+    //   upgradeCode: '8a22b26c-3275-41db-9faa-2db883f25d63',
 
-      ui: {
-        chooseDirectory: true,
-      },
-      features: {
-        autoLaunch: true,
-        autoUpdate: true,
-      },
-      // certificateFile: './eduinsight_systems.pfx',
-      // certificatePassword: 'jlzk21dev'
-    }),
+    //   ui: {
+    //     chooseDirectory: true,
+    //   },
+    //   features: {
+    //     autoLaunch: true,
+    //     autoUpdate: true,
+    //   },
+    // }),
     new MakerZIP({}, ['darwin']),
     new MakerRpm({}),
     new MakerDeb({}),
   ],
-  publishers:[
+  publishers: [
     {
       name: '@electron-forge/publisher-github',
       config: {
@@ -69,7 +69,7 @@ const config: ForgeConfig = {
           name: 'eduinsight-client',
         },
         prerelease: false,
-        draft: false,
+        draft: true,
       },
     },
   ],

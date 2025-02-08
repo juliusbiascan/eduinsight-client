@@ -6,16 +6,16 @@
  */
 import log from 'electron-log';
 import is from 'electron-is';
-//import AppInfo from 'package.json';
+import AppInfo from 'package.json';
 import { app, autoUpdater, ipcMain } from 'electron';
 import { IPCRoute } from '@/shared/constants';
 
-// /**
-//  * Repo information extracted from the package info file.
-//  *
-//  * @constant
-//  */
-// const repoInfo = AppInfo.homepage.match(/github\.com\/([\w-]+)\/([\w-]+)/);
+/**
+ * Repo information extracted from the package info file.
+ *
+ * @constant
+ */
+const repoInfo = AppInfo.homepage.match(/github\.com\/([\w-]+)\/([\w-]+)/);
 
 /**
  * Register the IPC event handlers for the auto-updater.
@@ -48,7 +48,7 @@ export default function () {
      */
     autoUpdater.setFeedURL({
       url:
-        'https://update.electronjs.org/juliusbiascan/eduinsight-client' +
+        `https://update.electronjs.org/${repoInfo[1]}/${repoInfo[2]}/` +
         `${process.platform}-${process.arch}/${app.getVersion()}`,
     });
 

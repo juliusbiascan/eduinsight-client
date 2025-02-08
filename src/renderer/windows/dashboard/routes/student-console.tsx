@@ -224,12 +224,12 @@ const FileTransferProgress: React.FC<FileTransferProgressProps> = ({
               exit={
                 transfer.progress >= 100
                   ? {
-                      opacity: 0,
-                      height: 0,
-                      marginTop: 0,
-                      marginBottom: 0,
-                      padding: 0,
-                    }
+                    opacity: 0,
+                    height: 0,
+                    marginTop: 0,
+                    marginBottom: 0,
+                    padding: 0,
+                  }
                   : undefined
               }
               transition={{ duration: 0.2 }}
@@ -246,24 +246,22 @@ const FileTransferProgress: React.FC<FileTransferProgressProps> = ({
                   )}
                 </div>
                 <span
-                  className={`text-xs font-medium ml-2 ${
-                    transfer.progress >= 100
+                  className={`text-xs font-medium ml-2 ${transfer.progress >= 100
                       ? 'text-green-600'
                       : 'text-gray-500'
-                  }`}
+                    }`}
                 >
                   {getProgressDisplay(transfer.progress)}
                 </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-1.5">
                 <motion.div
-                  className={`h-1.5 rounded-full transition-colors ${
-                    transfer.status === 'error'
+                  className={`h-1.5 rounded-full transition-colors ${transfer.status === 'error'
                       ? 'bg-red-500'
                       : transfer.progress >= 100
                         ? 'bg-green-500'
                         : 'bg-blue-500'
-                  }`}
+                    }`}
                   style={{ width: `${transfer.progress}%` }}
                   transition={{ duration: 0.2 }}
                 />
@@ -435,6 +433,7 @@ export const StudentConsole: React.FC = () => {
       mounted = false;
     };
   }, [user, socket, isConnected, fetchSubjects]);
+
   // useEffect(() => {
   //   // Peer connection setup effect
   //   const userId = selectedSubject?.userId; // Make sure to use teacherId instead of userId
@@ -563,47 +562,66 @@ export const StudentConsole: React.FC = () => {
     let currentDelay = RECONNECT_DELAY;
 
     const initializeCall = async (peer: PeerClient, activeUser: any) => {
-      const screen = await api.screen.getScreenSourceId();
-      const mediaStream = await (navigator.mediaDevices as any).getUserMedia({
-        audio: false,
-        video: {
-          mandatory: {
-            chromeMediaSource: 'desktop',
-            chromeMediaSourceId: screen,
-            maxWidth: 1920,
-            maxHeight: 1080,
-            frameRate: { ideal: 30, max: 60 },
+
+      let retryCount = 0;
+
+      const attemptCall = async () => {
+        const screen = await api.screen.getScreenSourceId();
+        const mediaStream = await (navigator.mediaDevices as any).getUserMedia({
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: screen,
+              maxWidth: 1920,
+              maxHeight: 1080,
+              frameRate: { ideal: 30, max: 60 },
+            },
           },
-        },
-      });
+        });
 
-      mediaStreamRef.current = mediaStream;
-      const call = peer.call(activeUser.userId, mediaStream);
-      console.log('Screen share call initiated:', call);
+        mediaStreamRef.current = mediaStream;
+        const call = peer.call(activeUser.userId, mediaStream);
+        console.log('Screen share call initiated:', call);
 
-      call.on('close', () => {
-        console.log('Call closed, attempting reconnection...');
-        // Implement exponential backoff
-        currentDelay = Math.min(currentDelay * backoffMultiplier, 30000); // Cap at 30 seconds
-        console.log(`Reconnecting in ${currentDelay/1000} seconds...`);
-        
-        reconnectTimeout = setTimeout(() => {
-          console.log('Attempting reconnection...');
-          initializeCall(peer, activeUser);
-        }, currentDelay);
-      });
+        // Set up a timeout for the connection
+        const connectionTimeout = setTimeout(() => {
+          console.log('Call connection timed out, retrying...');
+          retryCount++;
+          console.log(`Retry attempt ${retryCount}`);
+          call.close();
+          attemptCall();
+        }, 5000); // 5 second timeout
 
-      call.on('error', (err) => {
-        console.error(`Call error for user ${activeUser.userId}:`, err);
-        // Reset delay on successful connection
-        currentDelay = RECONNECT_DELAY;
-      });
+        // Clear timeout if connection is successful
+        call.on('stream', () => {
+          console.log('Stream connected successfully');
+          clearTimeout(connectionTimeout);
+          retryCount = 0; // Reset retry count on successful connection
+          currentDelay = RECONNECT_DELAY; // Reset delay
+        });
 
-      // Reset delay on successful connection
-      call.on('stream', () => {
-        console.log('Stream connected successfully');
-        currentDelay = RECONNECT_DELAY;
-      });
+        call.on('close', () => {
+          console.log('Call closed, attempting reconnection...');
+          clearTimeout(connectionTimeout);
+          currentDelay = Math.min(currentDelay * backoffMultiplier, 30000);
+          console.log(`Reconnecting in ${currentDelay / 1000} seconds...`);
+
+          reconnectTimeout = setTimeout(() => {
+            console.log('Attempting reconnection...');
+            attemptCall();
+          }, currentDelay);
+        });
+
+        call.on('error', (err) => {
+          console.error(`Call error for user ${activeUser.userId}:`, err);
+          clearTimeout(connectionTimeout);
+          // Reset delay on successful connection
+          currentDelay = RECONNECT_DELAY;
+        });
+      };
+
+      await attemptCall();
     };
 
     api.database.getActiveUserByUserId(userId).then((activeUser) => {
@@ -615,7 +633,7 @@ export const StudentConsole: React.FC = () => {
       console.log('Creating new peer connection with host:', activeUser.device.devHostname);
 
       const newPeer = new PeerClient(user.id, {
-        host: activeUser.device.devHostname,
+        host: "proxy.eduinsight.systems",
         port: 9001,
         path: '/eduinsight',
         config: {
@@ -962,9 +980,9 @@ export const StudentConsole: React.FC = () => {
             </p>
           </div>
         ) : !downloads.files.some(
-            (file) =>
-              !selectedSubject || file.subjectName === selectedSubject.name,
-          ) ? (
+          (file) =>
+            !selectedSubject || file.subjectName === selectedSubject.name,
+        ) ? (
           <div className="text-center py-8 text-gray-500">
             <FileDown className="h-12 w-12 mx-auto mb-4 text-gray-400" />
             <p className="font-medium">No Files Found</p>
@@ -1369,11 +1387,10 @@ export const StudentConsole: React.FC = () => {
                 <button
                   key={subject.id}
                   onClick={() => handleSubjectChange(subject.id.toString())}
-                  className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                    selectedSubject?.id === subject.id
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${selectedSubject?.id === subject.id
                       ? 'bg-[#C9121F] text-white'
                       : 'hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center">
                     <Folders className="h-4 w-4 mr-2" />
