@@ -35,7 +35,7 @@ const config: ForgeConfig = {
     new MakerSquirrel((arch: string) => ({
       setupExe: `eduinsight-client-${version}-win32-${arch}-setup.exe`,
       setupIcon: path.resolve(__dirname, 'images/app-icon.ico'),
-      iconUrl: path.resolve(__dirname, 'images/app-icon.ico'),
+      iconUrl: 'https://www.eduinsight.systems/favicon.ico',
       loadingGif: path.resolve(__dirname, 'images/setup.gif'),
       platforms: ['win32'],
     })),

@@ -260,7 +260,6 @@ export const TeacherConsole = () => {
   useEffect(() => {
     if (!peerRef.current && user?.id) {
       const newPeer = new PeerClient(user.id, {
-
         host: 'proxy.eduinsight.systems',
         port: 9001,
         path: '/eduinsight',

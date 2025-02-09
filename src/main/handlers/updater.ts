@@ -9,6 +9,7 @@ import is from 'electron-is';
 import AppInfo from 'package.json';
 import { app, autoUpdater, ipcMain } from 'electron';
 import { IPCRoute } from '@/shared/constants';
+import StoreManager from '../lib/store';
 
 /**
  * Repo information extracted from the package info file.
@@ -23,6 +24,9 @@ const repoInfo = AppInfo.homepage.match(/github\.com\/([\w-]+)\/([\w-]+)/);
  * @function
  */
 export default function () {
+
+  const store = StoreManager.getInstance();
+  
   /**
    * Handle the UPDATER_INSTALL event.
    * Quits the app and installs the update.
@@ -72,6 +76,7 @@ export default function () {
      */
     autoUpdater.on('error', (message) => {
       log.error(message);
+      store.set('updateError', message);
       event.reply(IPCRoute.UPDATER_NO_UPDATE);
     });
   });
