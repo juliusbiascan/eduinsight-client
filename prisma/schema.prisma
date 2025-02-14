@@ -28,10 +28,10 @@ enum Course {
 }
 
 enum YearLevel {
-  FIRST
-  SECOND
-  THIRD
-  FOURTH
+  FIRST // 1st year
+  SECOND // 2nd year
+  THIRD // 3rd year
+  FOURTH // 4th year
 }
 
 model User {
@@ -43,7 +43,7 @@ model User {
   password              String?
   accounts              Account[]
   isTwoFactorEnabled    Boolean                @default(false)
-  twoFactorConfirmation TwoFactorConfirmation?            // Add this field
+  twoFactorConfirmation TwoFactorConfirmation? // Add this field
 }
 
 model Account {
@@ -102,63 +102,66 @@ model TwoFactorConfirmation {
 }
 
 model Labaratory {
-  id        String   @id @default(cuid())
-  name      String
-  userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  Device    Device[] @relation("LabToDevice")
+  id                     String   @id @default(cuid())
+  name                   String
+  secretKey              String   @unique @default(cuid())
+  userId                 String
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  isRegistrationDisabled Boolean  @default(false)
+  Device                 Device[] @relation("LabToDevice")
+  DeviceUser             DeviceUser[] @relation("LabToDeviceUser")
 }
 
 model Device {
-  id            String             @id @default(uuid())
-  labId         String
-  lab           Labaratory        @relation("LabToDevice", fields: [labId], references: [id])
-  name          String
-  devId         String
-  devHostname   String
-  devMACaddress String
-  isArchived    Boolean
-  isUsed        Boolean           @default(false)
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  activeUsers   ActiveDeviceUser[]
-  activeUserLogs ActiveUserLogs[]
+  id                  String                @id @default(uuid())
+  labId               String
+  lab                 Labaratory            @relation("LabToDevice", fields: [labId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  name                String
+  devId               String
+  devHostname         String
+  devMACaddress       String
+  isArchived          Boolean
+  isUsed              Boolean               @default(false)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  activeUsers         ActiveDeviceUser[]
+  activeUserLogs      ActiveUserLogs[]
   powerMonitoringLogs PowerMonitoringLogs[]
+  ActivityLogs        ActivityLogs[]
 
   @@index([labId])
-  ActivityLogs ActivityLogs[]
 }
 
 model DeviceUser {
-  id                String             @id @default(uuid())
-  labId             String
-  schoolId          String             @unique
-  firstName         String
-  lastName          String
-  email             String             @unique
-  course            Course
-  yearLevel         YearLevel
-  contactNo         String
-  password          String
-  role              DeviceUserRole     @default(STUDENT)
-  subjects          Subject[]
-  activeDevices     ActiveDeviceUser[]  // Changed from activeDeviceUsers to activeDevices
-  powerLogs         PowerMonitoringLogs[]
-  activityLogs      ActivityLogs[]
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  notifications     Notification[]
-
+  id             String                @id @default(uuid())
+  labId          String
+  schoolId       String                @unique
+  firstName      String
+  lastName       String
+  email          String
+  course         Course
+  yearLevel      YearLevel
+  contactNo      String
+  password       String
+  role           DeviceUserRole        @default(STUDENT)
+  subjects       Subject[]
+  activeDevices  ActiveDeviceUser[] // Changed from activeDeviceUsers to activeDevices
+  powerLogs      PowerMonitoringLogs[]
+  activityLogs   ActivityLogs[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  notifications  Notification[]
+  emailVerified  DateTime?
   ActiveUserLogs ActiveUserLogs[]
-
+  lab           Labaratory             @relation("LabToDeviceUser", fields: [labId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  @@index([labId])
   @@index([email])
   @@index([role])
 }
 
-
 model ActivityLogs {
- id          String     @id @default(uuid())
+  id          String     @id @default(uuid())
   labId       String
   userId      String
   deviceId    String
@@ -215,22 +218,22 @@ model PowerMonitoringLogs {
   createdAt DateTime   @default(now())
   user      DeviceUser @relation(fields: [userId], references: [id], onDelete: Cascade)
   device    Device     @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }
 
-
 model Subject {
-  id             String           @id @default(uuid())
-  name           String
-  description    String
-  subjectCode    String
-  labId          String
-  userId         String
-  user           DeviceUser       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  quizzes        Quiz[]
-  quizRecord     QuizRecord[]
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id          String       @id @default(uuid())
+  name        String
+  description String
+  subjectCode String
+  labId       String
+  userId      String
+  user        DeviceUser   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  quizzes     Quiz[]
+  quizRecord  QuizRecord[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 }
 
 model SubjectRecord {
@@ -288,18 +291,18 @@ model QuizRecord {
 }
 
 model Notification {
-  id          String   @id @default(uuid())
+  id          String     @id @default(uuid())
   userId      String
   type        String
   title       String
   message     String
-  time        DateTime @default(now())
-  read        Boolean  @default(false)
+  time        DateTime   @default(now())
+  read        Boolean    @default(false)
   category    String?
-  priority    String?  @default("low")
+  priority    String?    @default("low")
   icon        String?
-  sound       Boolean  @default(true)
-  count       Int      @default(1)
+  sound       Boolean    @default(true)
+  count       Int        @default(1)
   status      String?
   progress    Float?
   filePath    String?
@@ -310,8 +313,8 @@ model Notification {
   score       Int?
   totalPoints Int?
   teacherName String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
   user        DeviceUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])

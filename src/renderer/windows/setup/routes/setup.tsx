@@ -13,6 +13,7 @@ import { Toaster } from '@/renderer/components/ui/toaster';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiMonitor, FiServer, FiWifi, FiRefreshCw } from 'react-icons/fi';
 import { Skeleton } from "@/renderer/components/ui/skeleton"; // Add this import
+import { Switch } from "@/renderer/components/ui/switch"; // Add this import
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,9 +28,9 @@ import {
 const formSchema = z.object({
   connectionMode: z.string().min(1, { message: "Please select a connection mode." }),
   deviceName: z.string().min(1, { message: "Device name is required." }),
-  labId: z.string().min(1, { message: "Please select a lab." }),
   networkName: z.string().min(1, { message: "Please select a network." }),
-  devicePurpose: z.string().min(1, { message: "Please select device purpose." }), // Add this line
+  devicePurpose: z.string().min(1, { message: "Please select device purpose." }),
+  labSecretKey: z.string().min(1, { message: "Lab secret key is required." }),
 });
 
 enum SetupStatus {
@@ -192,9 +193,9 @@ export const DeviceSetup: React.FC = () => {
     defaultValues: {
       connectionMode: ConnectionMode.Local,
       deviceName: "",
-      labId: "",
       networkName: "",
-      devicePurpose: "" // Add this line
+      devicePurpose: "",
+      labSecretKey: ""
     },
   });
 
@@ -273,10 +274,7 @@ export const DeviceSetup: React.FC = () => {
       const savedData = await api.store.get('deviceSetupData') as z.infer<typeof formSchema>;
       if (savedData) {
         form.reset(savedData);
-      } else if (labsData.length > 0) {
-        // Set the first lab as the default value if no saved data
-        form.setValue('labId', labsData[0].id);
-      }
+      } 
 
       // Connection complete
       setStatus(SetupStatus.ConnectionComplete);
@@ -329,7 +327,7 @@ export const DeviceSetup: React.FC = () => {
     api.store.set('deviceSetupData', formData);
     api.database.registerDevice(
       formData.deviceName,
-      formData.labId,
+      formData.labSecretKey,
       formData.networkName,
     )
       .then(() => {
@@ -363,6 +361,10 @@ export const DeviceSetup: React.FC = () => {
     );
   };
 
+  const handleOpenAtStartup = () => {
+    api.app.setOpenAtLogin(true);
+  };
+  
   const renderConnectionError = () => {
     if (!connectionState.error) return null;
 
@@ -516,8 +518,17 @@ export const DeviceSetup: React.FC = () => {
             <div className="mt-4 space-y-2 text-sm text-gray-900">
               <p><span className="font-medium">Device Purpose:</span> {formData?.devicePurpose === 'TEACHING' ? 'Teaching Device' : 'Student Device'}</p>
               <p><span className="font-medium">Device Name:</span> {formData?.deviceName}</p>
-              <p><span className="font-medium">Lab:</span> {labs.find(lab => lab.id === formData?.labId)?.name}</p>
               <p><span className="font-medium">Network:</span> {formData?.networkName}</p>
+            </div>
+            <div className="mt-4 flex items-center justify-between border-t pt-4">
+              <label htmlFor="open-startup" className="text-sm font-medium text-gray-700">
+                Open at Startup
+              </label>
+              <Switch
+                id="open-startup"
+                onCheckedChange={handleOpenAtStartup}
+                className="data-[state=checked]:bg-[#C9121F]"
+              />
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -682,6 +693,7 @@ export const DeviceSetup: React.FC = () => {
                               </FormItem>
                             )}
                           />
+                          
                           <FormField
                             control={form.control}
                             name="deviceName"
@@ -695,28 +707,26 @@ export const DeviceSetup: React.FC = () => {
                               </FormItem>
                             )}
                           />
+
                           <FormField
                             control={form.control}
-                            name="labId"
+                            name="labSecretKey"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel className="text-sm font-medium text-gray-700">Lab</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                  <FormControl>
-                                    <SelectTrigger className="bg-white border border-blue-200 rounded focus:border-purple-400">
-                                      <SelectValue placeholder="Select a lab" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {labs.map((lab) => (
-                                      <SelectItem key={lab.id} value={lab.id}>{lab.name}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                <FormLabel className="text-sm font-medium text-gray-700">Lab Secret Key</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    type="text"
+                                    placeholder="Enter lab secret key" 
+                                    {...field} 
+                                    className="bg-white border border-blue-200 rounded focus:border-purple-400" 
+                                  />
+                                </FormControl>
                                 <FormMessage className="text-xs text-red-500" />
                               </FormItem>
                             )}
                           />
+
                           <FormField
                             control={form.control}
                             name="networkName"
@@ -739,6 +749,7 @@ export const DeviceSetup: React.FC = () => {
                               </FormItem>
                             )}
                           />
+
                         </form>
                       </Form>
                     </div>

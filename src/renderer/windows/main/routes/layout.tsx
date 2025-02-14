@@ -10,9 +10,8 @@ import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 const ConnectionStatus = ({ isConnected }: { isConnected: boolean }) => (
   <div className="flex items-center space-x-3 bg-white px-5 py-3 rounded-full shadow-md border border-[#1A1617]/5">
     <motion.div
-      className={`w-3 h-3 rounded-full ${
-        isConnected ? 'bg-green-500' : 'bg-[#C9121F]'
-      }`}
+      className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-[#C9121F]'
+        }`}
       animate={{
         scale: [1, 1.2, 1],
         opacity: [1, 0.7, 1]
@@ -30,15 +29,18 @@ const ConnectionStatus = ({ isConnected }: { isConnected: boolean }) => (
 );
 
 const MainLayout = () => {
+  const [version, setVersion] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const { isConnected } = useSocket();
-  
+
   const checkConnection = useCallback(async () => {
     setIsLoading(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 1000)); // Minimum loading time
-      
+      const appInfo = await api.app.info();
+      setVersion(appInfo.version);
+      api.app.update();
     } catch (error) {
       console.error('Connection check failed:', error);
       navigate('/error');
@@ -46,7 +48,7 @@ const MainLayout = () => {
       setIsLoading(false);
     }
   }, [isConnected, navigate]);
-  
+
   useEffect(() => {
     checkConnection();
   }, [checkConnection]);
@@ -99,7 +101,7 @@ const MainLayout = () => {
                   <h1 className="text-5xl font-extrabold leading-tight text-[#1A1617] lg:text-6xl xl:text-7xl">
                     EDU<span className="text-[#C9121F]">INSIGHT</span>
                     <span className="block text-3xl lg:text-4xl mt-2 text-[#1A1617]/80">
-                      CLIENT
+                      CLIENT <span className="text-sm text-[#1A1617]/50">v{version}</span>
                     </span>
                   </h1>
 

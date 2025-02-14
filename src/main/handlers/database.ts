@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { IPCRoute } from '@/shared/constants';
+import { IPCRoute, LoginData } from '@/shared/constants';
 import { machineIdSync } from 'node-machine-id';
 import { getIPAddress, getNetworkNames } from '../lib/ipaddress';
 import { v4 as uuidv4 } from 'uuid';
@@ -95,14 +95,24 @@ export default function () {
 
   ipcMain.handle(
     IPCRoute.DATABASE_REGISTER_DEVICE,
-    async (_e, deviceName: string, labId: string, networkName: string) => {
+    async (_e, deviceName: string, labSecretKey: string, networkName: string) => {
       try {
+        // Find lab by secret key
+        const lab = await Database.prisma.labaratory.findFirst({
+          where: { secretKey: labSecretKey }
+        });
+
+        if (!lab) {
+          throw new Error('Invalid lab secret key');
+        }
+
         const ipAddress = getIPAddress();
         const macAddress = machineIdSync(true);
 
         const existingDevice = await Database.prisma.device.findFirst({
           where: { devMACaddress: macAddress },
         });
+
         if (existingDevice) {
           await Database.prisma.device.delete({
             where: { id: existingDevice.id },
@@ -116,15 +126,14 @@ export default function () {
             devHostname: ipAddress[networkName][0],
             devMACaddress: macAddress,
             isArchived: false,
-            labId: labId,
+            labId: lab.id, // Use the found lab's ID
           },
         });
 
         store.set('deviceId', device.id);
         store.set('labId', device.labId);
-
         store.delete('userId');
-        //reconnectSocket();
+
         return device;
       } catch (error) {
         console.error('Error registering device:', error);
@@ -170,7 +179,7 @@ export default function () {
             include: {
               subjects: true,
               ActiveUserLogs: true,
-             },
+            },
           },
         },
       }),
@@ -392,7 +401,7 @@ export default function () {
     IPCRoute.DATABASE_GET_QUIZ_BY_SUBJECT_ID,
     async (_e, subjectId: string) => {
       return await Database.prisma.quiz.findMany({
-        where: { subjectId , published: true},
+        where: { subjectId, published: true },
         include: { questions: true },
       });
     },
@@ -727,14 +736,12 @@ export default function () {
       });
 
       const existingUser = await Database.prisma.deviceUser.findFirst({
-        where: { email: data.email },
+        where: { schoolId: data.schoolId },
       });
 
       if (existingUser) {
         return { success: false, message: 'Email already exists' };
       }
-
-      const hashedPassword = await hash(data.password, 10);
 
       // Set default yearLevel for teachers
       const yearLevel = data.role === 'TEACHER' ? 'FIRST' : data.yearLevel;
@@ -748,9 +755,9 @@ export default function () {
           course: data.course,
           yearLevel: yearLevel, // Use the modified yearLevel
           role: data.role as DeviceUserRole,
-          email: data.email,
-          contactNo: data.contactNo,
-          password: hashedPassword,
+          email: '',
+          contactNo: '',
+          password: '',
         },
       });
 
@@ -761,21 +768,41 @@ export default function () {
     }
   });
 
-  ipcMain.handle(IPCRoute.AUTH_LOGIN, async (_, data) => {
+  ipcMain.handle(IPCRoute.AUTH_LOGIN, async (_, data: LoginData) => {
     try {
       const user = await Database.prisma.deviceUser.findFirst({
-        where: {
-          email: data.email,
-        },
+        where: data.email
+          ? { email: data.email }
+          : { schoolId: data.studentId }
       });
 
       if (!user) {
         return { success: false, message: 'User not found!' };
       }
 
-      const passwordMatch = await compare(data.password, user.password);
-      if (!passwordMatch) {
-        return { success: false, message: 'Invalid credentials' };
+      // Check if email verification is required
+      // if (!user.emailVerified && !data.allowDirectLogin) {
+      //   return { 
+      //     success: true, 
+      //     message: 'Please verify your email first.' 
+      //   };
+      // }
+
+      // Handle users with no password
+      if (!user.password || user.password === '') {
+        if (!data.allowDirectLogin) {
+          return {
+            success: false,
+            message: 'Please set up your account first.'
+          };
+        }
+      } else {
+        // For users with passwords, verify credentials
+        const passwordMatch = await compare(data.password, user.password);
+        if (!passwordMatch) {
+          console.log('Invalid credentials: ', data, '-', user);
+          return { success: false, message: 'Invalid credentials' };
+        }
       }
 
       const device = await Database.prisma.device.findUnique({
@@ -788,6 +815,10 @@ export default function () {
 
       if (device.isUsed) {
         return { success: false, message: 'Device already inused.' };
+      }
+
+      if (user.labId !== device.labId) {
+        return { success: false, message: 'User does not belong to this lab.' };
       }
 
       const activeUser = await Database.prisma.activeDeviceUser.findFirst({
@@ -856,13 +887,13 @@ export default function () {
 
   ipcMain.handle(IPCRoute.SEND_OTP, async (_, email: string) => {
     try {
-      // Verify that the email exists in the DeviceUser table
-      const user = await Database.prisma.deviceUser.findFirst({
-        where: { email },
-      });
-      if (!user) {
-        return { success: false, message: 'Email does not exist.' };
-      }
+      // // Verify that the email exists in the DeviceUser table
+      // const user = await Database.prisma.deviceUser.findFirst({
+      //   where: { email },
+      // });
+      // if (!user) {
+      //   return { success: false, message: 'Email does not exist.' };
+      // }
 
       // Generate a 6-digit OTP
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -897,10 +928,10 @@ export default function () {
 
   ipcMain.handle(
     IPCRoute.VERIFY_OTP_AND_RESET_PASSWORD,
-    async (_, payload: { email: string; otp: string; newPassword: string }) => {
+    async (_, payload: { userId: string, email: string; otp: string; newPassword: string }) => {
       try {
         cleanUpOtps();
-        const { email, otp, newPassword } = payload;
+        const { userId, email, otp, newPassword } = payload;
 
         // Find the OTP record
         const otpRecordIndex = otpStore.findIndex(
@@ -934,7 +965,7 @@ export default function () {
 
         // Update the user's password
         await Database.prisma.deviceUser.update({
-          where: { email },
+          where: { id: userId },
           data: { password: hashedPassword },
         });
 
@@ -947,6 +978,62 @@ export default function () {
         return {
           success: false,
           message: 'An error occurred while resetting password.',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'VERIFY_OTP',
+    async (_, payload: { userId: string; email: string; otp: string; skipVerification?: boolean }) => {
+      try {
+        if (payload.skipVerification) {
+          // If verification is skipped, just update the email
+          await Database.prisma.deviceUser.update({
+            where: { id: payload.userId },
+            data: { email: payload.email }
+          });
+          return { success: true, message: 'Email updated successfully' };
+        }
+
+        cleanUpOtps();
+        const { userId, email, otp } = payload;
+
+        // Find the OTP record
+        const otpRecordIndex = otpStore.findIndex(
+          (record) => record.email === email,
+        );
+        if (otpRecordIndex === -1) {
+          return { success: false, message: 'OTP not found or expired.' };
+        }
+
+        const otpRecord = otpStore[otpRecordIndex];
+
+        // Hash the provided OTP to compare
+        const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+
+        if (otpRecord.otpHash !== otpHash) {
+          return { success: false, message: 'Invalid OTP.' };
+        }
+
+        // OTP is valid, update email and emailVerified timestamp
+        await Database.prisma.deviceUser.update({
+          where: { id: userId },
+          data: {
+            email: email,
+            emailVerified: new Date()
+          },
+        });
+
+        // Remove the used OTP
+        otpStore.splice(otpRecordIndex, 1);
+
+        return { success: true };
+      } catch (error) {
+        console.error('Error verifying OTP:', error);
+        return {
+          success: false,
+          message: 'An error occurred while verifying OTP.',
         };
       }
     },
@@ -1009,9 +1096,9 @@ export default function () {
         if (id === 'all') {
           // Mark all notifications as read for the user
           const result = await Database.prisma.notification.updateMany({
-            where: { 
+            where: {
               userId,
-              read: false 
+              read: false
             },
             data: { read: true }
           });
@@ -1060,9 +1147,9 @@ export default function () {
     async (_, userId: string) => {
       try {
         const result = await Database.prisma.notification.updateMany({
-          where: { 
+          where: {
             userId,
-            read: false 
+            read: false
           },
           data: { read: true }
         });
@@ -1073,4 +1160,190 @@ export default function () {
       }
     }
   );
+
+  ipcMain.handle(
+    IPCRoute.DATABASE_UPDATE_USER,
+    async (_, { userId, email, contactNo, password, emailVerified }) => {
+      try {
+        // Get current user to check password status
+        const currentUser = await Database.prisma.deviceUser.findUnique({
+          where: { id: userId }
+        });
+
+        if (!currentUser) {
+          return { success: false, message: 'User not found' };
+        }
+
+        // Check if email is already in use by another user
+        if (email) {
+          const existingUser = await Database.prisma.deviceUser.findFirst({
+            where: {
+              email,
+              NOT: {
+                id: userId
+              }
+            }
+          });
+
+          if (existingUser) {
+            return { success: false, message: 'Email already in use' };
+          }
+        }
+
+        // Prepare update data
+        const updateData: any = {};
+
+        if (email) updateData.email = email;
+        if (contactNo) updateData.contactNo = contactNo;
+        // Only update password if user doesn't have one
+        if (password && (!currentUser.password || currentUser.password === '')) {
+          updateData.password = await hash(password, 10);
+        }
+        if (emailVerified !== undefined) {
+          updateData.emailVerified = emailVerified;
+        }
+
+        // Only perform update if there's data to update
+        if (Object.keys(updateData).length > 0) {
+          await Database.prisma.deviceUser.update({
+            where: { id: userId },
+            data: updateData
+          });
+        }
+
+        return { success: true, message: 'Account updated successfully' };
+      } catch (error) {
+        console.error('Error updating user:', error);
+        return { success: false, message: 'Failed to update user' };
+      }
+    }
+  );
+
+  ipcMain.handle(IPCRoute.VERIFY_USER_EMAIL, async (_, email: string) => {
+    try {
+      const user = await Database.prisma.deviceUser.findFirst({
+        where: { email }
+      });
+
+      if (!user) {
+        return {
+          success: false,
+          message: 'No user found with this email address.'
+        };
+      }
+
+      return {
+        success: true,
+        userId: user.id,
+        message: 'Email verified successfully.'
+      };
+    } catch (error) {
+      console.error('Error verifying email:', error);
+      return {
+        success: false,
+        message: 'An error occurred while verifying email.'
+      };
+    }
+  });
+
+  ipcMain.handle(IPCRoute.VERIFY_PERSONAL_INFO, async (_, data: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    schoolId: string;
+  }) => {
+    try {
+      const user = await Database.prisma.deviceUser.findFirst({
+        where: {
+          email: data.email,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          schoolId: data.schoolId
+        }
+      });
+
+      if (!user) {
+        return {
+          success: false,
+          message: 'The information provided does not match our records.'
+        };
+      }
+
+      return {
+        success: true,
+        userId: user.id,
+        message: 'Identity verified successfully.'
+      };
+    } catch (error) {
+      console.error('Error verifying personal information:', error);
+      return {
+        success: false,
+        message: 'An error occurred while verifying your information.'
+      };
+    }
+  });
+
+  ipcMain.handle(IPCRoute.AUTH_VERIFY_USER, async (_, identifier: string) => {
+    try {
+      const isEmail = /\S+@\S+\.\S+/.test(identifier);
+
+      const user = await Database.prisma.deviceUser.findFirst({
+        where: isEmail ? { email: identifier } : { schoolId: identifier }
+      });
+
+      if (!user) {
+        return {
+          success: false,
+          message: 'No user found with this credential.'
+        };
+      }
+
+      // If user has no password, allow direct login
+      if (!user.password || user.password === '') {
+        return {
+          success: true,
+          message: 'User found successfully.',
+          allowDirectLogin: true, // This will be included in the response type
+          userId: user.id
+        };
+      }
+
+      return {
+        success: true,
+        message: 'User found successfully.',
+        allowDirectLogin: false
+      };
+    } catch (error) {
+      console.error('Error verifying user:', error);
+      return {
+        success: false,
+        message: 'An error occurred while verifying user.',
+        allowDirectLogin: false
+      };
+    }
+  });
+
+  ipcMain.handle(IPCRoute.DATABASE_GET_LABORATORY_STATUS, async (_,) => {
+    try {
+      const deviceId = store.get('deviceId') as string;
+      // Get the device to find its laboratory
+      const device = await Database.prisma.device.findUnique({
+        where: { id: deviceId },
+        include: {
+          lab: true
+        }
+      });
+
+      if (!device || !device.lab) {
+        throw new Error('Laboratory not found');
+      }
+
+      return {
+        isRegistrationDisabled: device.lab.isRegistrationDisabled,
+      };
+    } catch (error) {
+      console.error('Error getting laboratory status:', error);
+      throw error;
+    }
+  });
 }

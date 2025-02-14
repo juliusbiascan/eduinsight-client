@@ -28,7 +28,6 @@ const config: ForgeConfig = {
     icon: path.resolve(__dirname, 'images/app-icon.ico'),
     appBundleId: 'io.eduinsight.client',
     appCopyright: 'Copyright © 2024',
-    appVersion: '1.0.0',
   },
   rebuildConfig: {},
   makers: [
@@ -116,6 +115,8 @@ const config: ForgeConfig = {
           },
         ],
       },
+      port: 3001,
+      loggerPort: 9005,
     }),
     // Fuses are used to enable/disable various Electron functionality
     // at package time, before code signing the application

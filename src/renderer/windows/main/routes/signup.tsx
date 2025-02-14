@@ -7,10 +7,9 @@ import { useEffect, useState } from 'react';
 import { useToast } from '@/renderer/hooks/use-toast';
 import { Device } from '@prisma/client';
 import LoadingSpinner from '../../../components/ui/loading-spinner';
-import PasswordStrength from '../../../components/ui/password-strength';
 import { motion } from 'framer-motion';
 import Message from '../../../components/ui/message';
-import { Eye, EyeOff } from 'lucide-react'; // Add import for eye icons
+import { WindowIdentifier } from '@/shared/constants';
 
 const initialFormData = {
   firstName: '',
@@ -18,11 +17,7 @@ const initialFormData = {
   schoolId: '',
   course: '',
   yearLevel: '',
-  role: '',
-  email: '',
-  contactNo: '',
-  password: '',
-  confirmPassword: ''
+  role: ''
 };
 
 const SignUpForm = () => {
@@ -35,16 +30,17 @@ const SignUpForm = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-    const [passwordMatch, setPasswordMatch] = useState(true);
-    const [showPassword, setShowPassword] = useState(false); // Add state for showing password
+    const [labStatus, setLabStatus] = useState<{ isRegistrationDisabled: boolean }>();
 
     useEffect(() => {
         Promise.all([
             api.database.getDevice(),
-            api.store.get('devicePurpose')
-        ]).then(([device, purpose]) => {
+            api.store.get('devicePurpose'),
+            api.database.getLaboratoryStatus() // Add this new call
+        ]).then(([device, purpose, status]) => {
             setDevice(device);
             setDevicePurpose(purpose);
+            setLabStatus(status);
             // Automatically set role and yearLevel based on device purpose
             if (purpose === 'TEACHING') {
                 handleChange('role', 'TEACHER');
@@ -70,51 +66,16 @@ const SignUpForm = () => {
         }
     };
 
-    // Modify the formatContactNumber function
-    const formatContactNumber = (value: string) => {
-        // Remove all non-numeric characters except '+'
-        let numbers = value.replace(/[^\d+]/g, '');
-        
-        // Ensure it starts with '(+63) '
-        if (!numbers.startsWith('+63')) {
-            numbers = '+63' + numbers.replace(/^0+/, '');
-        }
-
-        // Format as (+63) 9165553014
-        numbers = numbers.replace(/^(\+63)?(\d{0,10})$/, (_, p1, p2) => {
-            if (!p1) return `(+63) ${p2}`;
-            return `(+63) ${p2}`;
-        });
-
-        // Limit to '(+63) ' followed by 10 digits
-        const maxLength = 16; // (+63) and 10 digits
-        if (numbers.length > maxLength) return formData.contactNo;
-
-        return numbers;
-    };
-
     // Modify the handleChange function
     const handleChange = (field: string, value: string) => {
         if (field === 'schoolId') {
             value = formatSchoolId(value);
-        }
-        if (field === 'contactNo') {
-            value = formatContactNumber(value);
         }
         
         setFormData(prev => ({
             ...prev,
             [field]: value
         }));
-
-        // Check password match on every change
-        if (field === 'password' || field === 'confirmPassword') {
-            if (field === 'password') {
-                setPasswordMatch(value === formData.confirmPassword);
-            } else {
-                setPasswordMatch(value === formData.password);
-            }
-        }
     };
 
     // Modify validation for contact number
@@ -139,61 +100,26 @@ const SignUpForm = () => {
             }
         }
 
-        if (formData.password.length < 8) {
-            newErrors.password = "Password must be at least 8 characters";
-        }
-
-        if (formData.password !== formData.confirmPassword) {
-            newErrors.confirmPassword = "Passwords don't match";
-            setPasswordMatch(false);
-        } else {
-            setPasswordMatch(true);
-        }
-
-        if (!formData.email.includes('@')) {
-            newErrors.email = "Invalid email address";
-        }
-
-        const contactRegex = /^\(\+63\) \d{10}$/;
-        if (!contactRegex.test(formData.contactNo)) {
-            newErrors.contactNo = "Contact number must be in the format (+63) 9165553014";
-        }
-
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
     // Add validation utilities
-    const VALIDATION_RULES = {
-        password: /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/,
-        email: /\S+@\S+\.\S+/,
-        schoolId: /^\d{2}-\d{5}$/
-    };
 
-    const validateFields = (formData: typeof initialFormData) => {
-        const errors: Record<string, string> = {};
-        
-        if (!VALIDATION_RULES.email.test(formData.email)) {
-            errors.email = 'Invalid email format';
-        }
-        
-        if (!VALIDATION_RULES.password.test(formData.password)) {
-            errors.password = 'Password must contain letters and numbers, minimum 8 characters';
-        }
-        
-        // Add more validation rules
-        
-        return errors;
-    };
 
     // Update handleSignUp to use validation
     const handleSignUp = async (e: React.FormEvent) => {
         e.preventDefault();
-        const validationErrors = validateFields(formData);
-        if (Object.keys(validationErrors).length > 0) {
-            setErrors(validationErrors);
+
+        // Check if registration is disabled
+        if (labStatus?.isRegistrationDisabled) {
+            setMessage({
+                type: 'error',
+                text: 'Registration is currently disabled for this laboratory. Please contact your administrator.'
+            });
             return;
         }
+
         if (!agreeTerms) {
             setErrors(prev => ({ ...prev, terms: "You must agree to the terms and conditions." }));
             return;
@@ -204,7 +130,6 @@ const SignUpForm = () => {
         setMessage(null);
 
         try {
-            // If teacher, ensure yearLevel is set
             const submissionData = {
                 ...formData,
                 yearLevel: devicePurpose === 'TEACHING' ? 'FIRST' : formData.yearLevel,
@@ -216,13 +141,33 @@ const SignUpForm = () => {
                 ...submissionData
             });
 
-            setMessage({
-                type: success ? 'success' : 'error',
-                text: message
-            });
-
             if (success) {
-                setTimeout(() => navigate('/login'), 1500);
+                // Attempt to login immediately after successful registration
+                const loginResult = await api.auth.login({
+                    deviceId: device?.id,
+                    email: '',
+                    studentId: formData.schoolId,
+                    password: 'eduinsight',
+                    allowDirectLogin: true,
+                });
+
+                setMessage({
+                    type: loginResult.success ? 'success' : 'error',
+                    text: loginResult.message
+                });
+
+                if (loginResult.success) {
+                    // Close window after successful login
+                    setTimeout(() => {
+                        api.window.openInTray(WindowIdentifier.Dashboard);
+                        window.close();
+                    }, 1500);
+                }
+            } else {
+                setMessage({
+                    type: 'error',
+                    text: message
+                });
             }
         } catch (err: any) {
             setMessage({
@@ -246,6 +191,13 @@ const SignUpForm = () => {
             </h2>
 
             {message && <Message type={message.type} message={message.text} />}
+
+            {labStatus?.isRegistrationDisabled && (
+                <Message 
+                    type="error" 
+                    message="Registration is currently disabled for this laboratory. Please contact your administrator." 
+                />
+            )}
 
             <form onSubmit={handleSignUp} className="space-y-4">
                 {/* Personal Information Section */}
@@ -346,102 +298,6 @@ const SignUpForm = () => {
                         {errors.role && <p className="text-red-500 text-sm">{errors.role}</p>}
                     </div>
                 </fieldset>
-
-                {/* Contact Information Section */}
-                <fieldset className="space-y-4">
-                    <legend className="text-base font-semibold text-[#1A1617] pb-1 border-b">
-                        Contact Information
-                    </legend>
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="email">Email</Label>
-                            <Input
-                                id="email"
-                                type="email"
-                                placeholder="email@example.com"
-                                required
-                                value={formData.email}
-                                onChange={(e) => handleChange('email', e.target.value)}
-                                className={errors.email ? 'border-red-500' : ''}
-                            />
-                            {errors.email && <p className="text-red-500 text-sm">{errors.email}</p>}
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="contactNo">Contact Number</Label>
-                            <Input
-                                id="contactNo"
-                                type="tel"
-                                placeholder="(+63) 9165553014"
-                                required
-                                value={formData.contactNo}
-                                onChange={(e) => handleChange('contactNo', e.target.value)}
-                                className={errors.contactNo ? 'border-red-500' : ''}
-                            />
-                            {errors.contactNo && <p className="text-red-500 text-sm">{errors.contactNo}</p>}
-                        </div>
-
-                        
-                    </div>
-                </fieldset>
-
-                {/* Account Security Section */}
-                <fieldset className="space-y-4">
-                    <legend className="text-base font-semibold text-[#1A1617] pb-1 border-b">
-                        Account Security
-                    </legend>
-                    <div className="flex flex-col gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="password">Password</Label>
-                            <Input
-                                id="password"
-                                type="password"
-                                placeholder="••••••••"
-                                required
-                                value={formData.password}
-                                onChange={(e) => handleChange('password', e.target.value)}
-                                className={errors.password ? 'border-red-500' : ''}
-                                aria-invalid={errors.password ? 'true' : 'false'}
-                                aria-describedby="password-error"
-                            />
-                            {errors.password && (
-                                <p className="text-red-500 text-sm" id="password-error">
-                                    {errors.password}
-                                </p>
-                            )}
-                            
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="confirmPassword">Confirm Password</Label>
-                            <div className="relative">
-                                <Input
-                                    id="confirmPassword"
-                                    type={showPassword ? "text" : "password"}
-                                    placeholder="••••••••"
-                                    required
-                                    value={formData.confirmPassword}
-                                    onChange={(e) => handleChange('confirmPassword', e.target.value)}
-                                    className={`${!passwordMatch && formData.confirmPassword ? 'border-red-500' : formData.confirmPassword && passwordMatch ? 'border-green-500' : ''}`}
-                                    aria-invalid={!passwordMatch ? 'true' : 'false'}
-                                    aria-describedby="confirm-password-error"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 transform -translate-y-1/2"
-                                >
-                                    {showPassword ? <EyeOff className="w-5 h-5 text-gray-500" /> : <Eye className="w-5 h-5 text-gray-500" />}
-                                </button>
-                            </div>
-                            <PasswordStrength password={formData.password} />
-                            {!passwordMatch && formData.confirmPassword && (
-                                <p className="text-red-500 text-sm" id="confirm-password-error">
-                                    Passwords don't match
-                                </p>
-                            )}
-                        </div>
-                    </div>
-                </fieldset>
                 </div>
                 <div className="flex items-center">
                     <input
@@ -464,9 +320,11 @@ const SignUpForm = () => {
                     <Button
                         type="submit"
                         className="w-full py-3 text-lg font-semibold bg-[#EBC42E] hover:bg-[#C9121F] text-[#1A1617] hover:text-white transition-all duration-300 rounded-xl"
-                        disabled={isLoading}
+                        disabled={isLoading || labStatus?.isRegistrationDisabled}
+                        title={labStatus?.isRegistrationDisabled ? 'Registration is currently disabled' : ''}
                     >
-                        {isLoading ? <LoadingSpinner /> : 'Sign Up'}
+                        {isLoading ? <LoadingSpinner /> : 
+                         labStatus?.isRegistrationDisabled ? 'Registration Disabled' : 'Sign Up'}
                     </Button>
 
                     <p className="text-center text-[#1A1617]/70 text-sm">

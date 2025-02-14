@@ -32,6 +32,10 @@ export enum WindowIdentifier {
  * @enum
  */
 export enum IPCRoute {
+  APP_INFO = '/application/info',
+  APP_OPEN_AT_LOGIN = '/app/open-at-login',
+  APP_UPDATE = '/app/update',
+  
   DATABASE_UPDATE_QUIZ_QUESTIONS_BULK = 'database:update-quiz-questions-bulk',
   OPEN_EXTERNAL_LINK = '/open_external_link',
   WINDOW_OPEN_SETUP = '/window/open-setup',
@@ -48,7 +52,6 @@ export enum IPCRoute {
   QUIZ_PLAY = '/quiz/play',
   QUIZ_GET_QUIZ_ID = '/quiz/get_quiz_id',
   DATABASE_PUBLISH_QUIZ = '/database/publish_quiz',
-  APP_INFO = '/application/info',
   DATABASE_CONNECT = '/database/connect',
   DATABASE_DISCONNECT = '/database/disconnect',
   DATABASE_CHECK_CONNECTION = '/database/check_connection',
@@ -87,6 +90,7 @@ export enum IPCRoute {
   DATABASE_DELETE_QUIZ_QUESTION = '/database/delete_quiz_question',
   DATABASE_SAVE_QUIZ_RECORD = '/database/save_quiz_record',
   DATABASE_UPDATE_QUIZ_QUESTIONS_ORDER = 'database:update-quiz-questions-order',
+  DATABASE_GET_LABORATORY_STATUS = '/database/get_laboratory_status',  
   UPDATER_CHECKING = '/updater/checking',
   UPDATER_DOWNLOADING = '/updater/downloading',
   UPDATER_FINISHED = '/updater/finished',
@@ -140,4 +144,18 @@ export enum IPCRoute {
   DATABASE_REMOVE_NOTIFICATION = '/database/remove-notification',
   DATABASE_CLEAR_NOTIFICATIONS = '/database/clear-notifications',
   DATABASE_MARK_ALL_NOTIFICATIONS_READ = '/database/mark-all-notifications-read',
+
+  DATABASE_UPDATE_USER = '/database/update_user',
+
+  VERIFY_USER_EMAIL = 'VERIFY_USER_EMAIL',
+  VERIFY_PERSONAL_INFO = 'VERIFY_PERSONAL_INFO',
+  AUTH_VERIFY_USER = 'AUTH_VERIFY_USER',
+}
+
+export interface LoginData {
+  deviceId: string;
+  email?: string;
+  studentId?: string;
+  password: string;
+  allowDirectLogin?: boolean;
 }

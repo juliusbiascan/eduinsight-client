@@ -11,8 +11,50 @@ const ResetPasswordPage = () => {
     const [message, setMessage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [email, setEmail] = useState('');
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    const [schoolId, setSchoolId] = useState('');
+    const [isIdentityVerified, setIsIdentityVerified] = useState(false);
+    const [isEmailVerified, setIsEmailVerified] = useState(false);
+    const [userId, setUserId] = useState<string | null>(null);
+
+    const verifyIdentity = async () => {
+        try {
+            const response = await api.auth.verifyPersonalInfo({
+                email,
+                firstName,
+                lastName,
+                schoolId
+            });
+            if (response.success) {
+                setUserId(response.userId);
+                setIsIdentityVerified(true);
+                
+                // Automatically send OTP after successful identity verification
+                const otpResponse = await api.auth.sendOtp(email);
+                if (otpResponse.success) {
+                    setIsEmailVerified(true);
+                    setMessage('Identity verified successfully and OTP has been sent to your email.');
+                } else {
+                    setError(otpResponse.message || 'Failed to send OTP.');
+                    setMessage(null);
+                }
+                setError(null);
+            } else {
+                setError(response.message || 'Identity verification failed.');
+                setMessage(null);
+            }
+        } catch (err) {
+            setError('An unexpected error occurred.');
+            setMessage(null);
+        }
+    };
 
     const handleSendOtp = async () => {
+        if (!isEmailVerified) {
+            setError('Please verify your email first.');
+            return;
+        }
         try {
             const response = await api.auth.sendOtp(email);
             if (response.success) {
@@ -32,6 +74,7 @@ const ResetPasswordPage = () => {
         e.preventDefault();
         try {
             const response = await api.auth.verifyOtpAndResetPassword({
+                userId,
                 email,
                 otp,
                 newPassword,
@@ -58,59 +101,114 @@ const ResetPasswordPage = () => {
 
             <form onSubmit={handleReset} className="space-y-6">
                 <p className="text-[#1A1617]/70 mb-6">
-                    Enter your email address and we'll send you a link to reset your password.
+                    Please verify your identity to reset your password.
                 </p>
 
                 {message && <p className="text-green-500">{message}</p>}
                 {error && <p className="text-red-500">{error}</p>}
 
-                <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                        id="email"
-                        type="email"
-                        placeholder="Enter your email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                    />
-                </div>
+                {!isIdentityVerified ? (
+                    <>
+                        <div className="space-y-2">
+                            <Label htmlFor="email">Email</Label>
+                            <Input
+                                id="email"
+                                type="email"
+                                placeholder="Enter your email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
+                            />
+                        </div>
 
-                <div className="space-y-2">
-                    <Label htmlFor="otp">OTP</Label>
-                    <Input
-                        id="otp"
-                        type="text"
-                        placeholder="Enter the OTP sent to your email"
-                        value={otp}
-                        onChange={(e) => setOtp(e.target.value)}
-                        required
-                    />
-                </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="firstName">First Name</Label>
+                            <Input
+                                id="firstName"
+                                type="text"
+                                placeholder="Enter your first name"
+                                value={firstName}
+                                onChange={(e) => setFirstName(e.target.value)}
+                                required
+                            />
+                        </div>
 
-                <div className="space-y-2">
-                    <Label htmlFor="newPassword">New Password</Label>
-                    <Input
-                        id="newPassword"
-                        type="password"
-                        placeholder="Enter your new password"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        required
-                    />
-                </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="lastName">Last Name</Label>
+                            <Input
+                                id="lastName"
+                                type="text"
+                                placeholder="Enter your last name"
+                                value={lastName}
+                                onChange={(e) => setLastName(e.target.value)}
+                                required
+                            />
+                        </div>
 
-                <Button
-                    type="button"
-                    onClick={handleSendOtp}
-                    className="w-full py-4 text-lg font-semibold bg-[#EBC42E] hover:bg-[#C9121F] text-[#1A1617] hover:text-white transition-all duration-300 rounded-xl"
-                >
-                    Send OTP
-                </Button>
+                        <div className="space-y-2">
+                            <Label htmlFor="schoolId">School ID</Label>
+                            <Input
+                                id="schoolId"
+                                type="text"
+                                placeholder="Enter your school ID"
+                                value={schoolId}
+                                onChange={(e) => setSchoolId(e.target.value)}
+                                required
+                            />
+                        </div>
 
-                <Button type="submit" className="w-full py-4 text-lg font-semibold bg-[#EBC42E] hover:bg-[#C9121F] text-[#1A1617] hover:text-white transition-all duration-300 rounded-xl">
-                    Reset Password
-                </Button>
+                        <Button
+                            type="button"
+                            onClick={verifyIdentity}
+                            className="w-full py-4 text-lg font-semibold bg-[#EBC42E] hover:bg-[#C9121F] text-[#1A1617] hover:text-white transition-all duration-300 rounded-xl"
+                        >
+                            Verify Identity
+                        </Button>
+                    </>
+                ) : !isEmailVerified ? (
+                    // Show OTP request section after identity verification
+                    <Button
+                        type="button"
+                        onClick={handleSendOtp}
+                        className="w-full py-4 text-lg font-semibold bg-[#EBC42E] hover:bg-[#C9121F] text-[#1A1617] hover:text-white transition-all duration-300 rounded-xl"
+                    >
+                        Send OTP
+                    </Button>
+                ) : (
+                    // Show password reset form after OTP verification
+                    <>
+                        <div className="space-y-2">
+                            <Label htmlFor="otp">OTP</Label>
+                            <Input
+                                id="otp"
+                                type="text"
+                                placeholder="Enter the OTP sent to your email"
+                                value={otp}
+                                onChange={(e) => setOtp(e.target.value)}
+                                required
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="newPassword">New Password</Label>
+                            <Input
+                                id="newPassword"
+                                type="password"
+                                placeholder="Enter your new password"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                required
+                            />
+                        </div>
+
+                        <Button 
+                            type="submit" 
+                            className="w-full py-4 text-lg font-semibold bg-[#EBC42E] hover:bg-[#C9121F] text-[#1A1617] hover:text-white transition-all duration-300 rounded-xl"
+                        >
+                            Reset Password
+                        </Button>
+                    </>
+                )}
 
                 <p className="text-center text-[#1A1617]/70">
                     Remember your password?{' '}

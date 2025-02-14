@@ -247,8 +247,8 @@ const FileTransferProgress: React.FC<FileTransferProgressProps> = ({
                 </div>
                 <span
                   className={`text-xs font-medium ml-2 ${transfer.progress >= 100
-                      ? 'text-green-600'
-                      : 'text-gray-500'
+                    ? 'text-green-600'
+                    : 'text-gray-500'
                     }`}
                 >
                   {getProgressDisplay(transfer.progress)}
@@ -257,10 +257,10 @@ const FileTransferProgress: React.FC<FileTransferProgressProps> = ({
               <div className="w-full bg-gray-200 rounded-full h-1.5">
                 <motion.div
                   className={`h-1.5 rounded-full transition-colors ${transfer.status === 'error'
-                      ? 'bg-red-500'
-                      : transfer.progress >= 100
-                        ? 'bg-green-500'
-                        : 'bg-blue-500'
+                    ? 'bg-red-500'
+                    : transfer.progress >= 100
+                      ? 'bg-green-500'
+                      : 'bg-blue-500'
                     }`}
                   style={{ width: `${transfer.progress}%` }}
                   transition={{ duration: 0.2 }}
@@ -275,6 +275,28 @@ const FileTransferProgress: React.FC<FileTransferProgressProps> = ({
       </motion.div>
     </AnimatePresence>
   );
+};
+
+// Add these utility functions after the imports and before component code
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const retryOperation = async <T,>(
+  operation: () => Promise<T>,
+  maxRetries = 3,
+  delayMs = 1000
+): Promise<T> => {
+  let lastError: Error;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error as Error;
+      if (i < maxRetries - 1) {
+        await wait(delayMs * Math.pow(2, i)); // Exponential backoff
+      }
+    }
+  }
+  throw lastError;
 };
 
 export const StudentConsole: React.FC = () => {
@@ -302,6 +324,7 @@ export const StudentConsole: React.FC = () => {
   >({});
   const [showNotifications, setShowNotifications] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
 
   // Refs
   const peerRef = useRef<PeerClient | null>(null);
@@ -322,32 +345,72 @@ export const StudentConsole: React.FC = () => {
 
   // Add this before the useEffect hooks
   const fetchSubjects = useCallback(async () => {
-    if (!user || !socket || !isConnected) return;
+    if (!user || !socket || !isConnected) {
+      console.log('Prerequisites not met for fetching subjects');
+      return;
+    }
+
+    setIsLoadingSubjects(true);
+
     try {
-      const data = await api.database.getStudentSubjects(user.id);
+      const data = await retryOperation(async () => {
+        const subjects = await api.database.getStudentSubjects(user.id);
+
+        // Validate the response data
+        if (!Array.isArray(subjects)) {
+          throw new Error('Invalid response format from server');
+        }
+
+        return subjects;
+      });
+
       if (data.length > 0) {
         setSubjects(data);
-        setSelectedSubject(data[0]);
+
+        // Find the last active subject or default to first one
+        const lastActiveSubject = localStorage.getItem(`lastActiveSubject_${user.id}`);
+        const initialSubject = data.find(s => s.id.toString() === lastActiveSubject) || data[0];
+
+        setSelectedSubject(initialSubject);
+
         // Only emit if socket is connected
         if (socket && isConnected) {
           socket.emit('join-subject', {
             userId: user.id,
-            subjectId: data[0].id,
+            subjectId: initialSubject.id,
           });
+
+          // Store the last active subject
+          localStorage.setItem(`lastActiveSubject_${user.id}`, initialSubject.id.toString());
         }
       } else {
         setSubjects([]);
         setSelectedSubject(null);
+        localStorage.removeItem(`lastActiveSubject_${user.id}`);
       }
     } catch (error) {
       console.error('Error fetching subjects:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load subjects',
-        variant: 'destructive',
-      });
+
+      // Show different toast messages based on error type
+      if (error instanceof Error) {
+        if (error.message.includes('network')) {
+          toast({
+            title: 'Network Error',
+            description: 'Please check your internet connection',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error',
+            description: 'Failed to load subjects. Please try again later.',
+            variant: 'destructive',
+          });
+        }
+      }
+    } finally {
+      setIsLoadingSubjects(false);
     }
-  }, [user, socket, isConnected, toast]); // Add dependencies
+  }, [user, socket, isConnected, toast]);
 
   // Add fetchDownloads before the useEffect hooks
   const fetchDownloads = useCallback(async (): Promise<void> => {
@@ -776,6 +839,7 @@ export const StudentConsole: React.FC = () => {
 
   const handleSubjectChange = (value: string) => {
     if (!socket || !isConnected || !user) return;
+    setIsLoadingSubjects(true);
 
     const subject = subjects.find((s) => s.id.toString() === value);
     setSelectedSubject(subject || null);
@@ -786,6 +850,11 @@ export const StudentConsole: React.FC = () => {
         subjectId: subject.id,
       });
     }
+
+    // Simulate loading time for content transition
+    setTimeout(() => {
+      setIsLoadingSubjects(false);
+    }, 500);
   };
 
   const calculateProgress = () => {
@@ -1383,30 +1452,44 @@ export const StudentConsole: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              {subjects.map((subject) => (
-                <button
-                  key={subject.id}
-                  onClick={() => handleSubjectChange(subject.id.toString())}
-                  className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${selectedSubject?.id === subject.id
-                      ? 'bg-[#C9121F] text-white'
-                      : 'hover:bg-gray-100'
-                    }`}
-                >
-                  <div className="flex items-center">
-                    <Folders className="h-4 w-4 mr-2" />
-                    <span className="truncate">{subject.name}</span>
-                  </div>
-                </button>
-              ))}
+              {isLoadingSubjects ? (
+                // Add loading skeleton
+                <>
+                  {[1, 2, 3].map((index) => (
+                    <div
+                      key={index}
+                      className="w-full h-10 bg-gray-100 animate-pulse rounded-lg"
+                    />
+                  ))}
+                </>
+              ) : (
+                <>
+                  {subjects.map((subject) => (
+                    <button
+                      key={subject.id}
+                      onClick={() => handleSubjectChange(subject.id.toString())}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${selectedSubject?.id === subject.id
+                        ? 'bg-[#C9121F] text-white'
+                        : 'hover:bg-gray-100'
+                        }`}
+                    >
+                      <div className="flex items-center">
+                        <Folders className="h-4 w-4 mr-2" />
+                        <span className="truncate">{subject.name}</span>
+                      </div>
+                    </button>
+                  ))}
 
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => setIsJoinDialogOpen(true)}
-              >
-                <PlusCircle className="h-4 w-4 mr-2" />
-                Join Subject
-              </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => setIsJoinDialogOpen(true)}
+                  >
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    Join Subject
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </aside>
@@ -1491,7 +1574,71 @@ export const StudentConsole: React.FC = () => {
               </DropdownMenu>
             </div>
           )}
-          {subjects.length === 0 ? (
+          {isLoadingSubjects ? (
+            // Loading skeleton for subject content
+            <div className="space-y-6">
+              {/* Loading skeleton for Subject Overview */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[1, 2, 3].map((index) => (
+                  <div key={index} className="bg-white p-6 rounded-xl shadow-sm">
+                    <div className="h-4 w-24 bg-gray-200 rounded animate-pulse mb-1" />
+                    <div className="h-8 w-16 bg-gray-300 rounded animate-pulse mb-2" />
+                    <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                ))}
+              </div>
+
+              {/* Loading skeleton for Available Quizzes */}
+              <div className="bg-white rounded-xl shadow-sm">
+                <div className="p-6 border-b">
+                  <div className="h-6 w-48 bg-gray-200 rounded animate-pulse" />
+                </div>
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[1, 2, 3].map((index) => (
+                      <div
+                        key={index}
+                        className="bg-gray-50 rounded-lg p-4 space-y-4"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
+                          <div className="h-5 w-20 bg-gray-200 rounded animate-pulse" />
+                        </div>
+                        <div className="h-8 w-full bg-gray-200 rounded animate-pulse" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Loading skeleton for Subject Materials */}
+              <div className="bg-white rounded-xl shadow-sm">
+                <div className="p-6 border-b">
+                  <div className="h-6 w-48 bg-gray-200 rounded animate-pulse" />
+                </div>
+                <div className="p-6">
+                  <div className="space-y-4">
+                    {[1, 2, 3].map((index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                      >
+                        <div className="flex items-center space-x-4">
+                          <div className="h-10 w-10 bg-gray-200 rounded-full animate-pulse" />
+                          <div className="space-y-2">
+                            <div className="h-4 w-48 bg-gray-200 rounded animate-pulse" />
+                            <div className="h-3 w-24 bg-gray-200 rounded animate-pulse" />
+                          </div>
+                        </div>
+                        <div className="h-8 w-8 bg-gray-200 rounded animate-pulse" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : subjects.length === 0 ? (
+            // Welcome message
             <div className="h-full flex items-center justify-center">
               <div className="text-center max-w-md">
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">

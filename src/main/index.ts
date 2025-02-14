@@ -9,6 +9,7 @@ import * as IPCHandlers from './handlers';
 import StoreManager from '@/main/lib/store';
 import Store from 'electron-store';
 import { handleSecondinstance } from "./lib/instance";
+import is from "electron-is";
 
 const store = StoreManager.getInstance();
 const deviceId = store.get('deviceId') as string;
@@ -49,11 +50,30 @@ function handleOnReady() {
     return;
   }
 
-  // // This line configures the app to start automatically on system login
-  // // It sets the 'openAtLogin' setting to true if the app is not running in development mode
-  // // This ensures that the app starts automatically when the user logs in, but only in production
-  // app.setLoginItemSettings({ openAtLogin: true });
+  // This line configures the app to start automatically on system login
+  // It sets the 'openAtLogin' setting to true if the app is not running in development mode
+  // This ensures that the app starts automatically when the user logs in, but only in production
+  // if (is.production()) {
+  //   app.setLoginItemSettings({ openAtLogin: true });
+  // }
 
+  if (is.windows()) {
+    console.log('Running on Windows');
+  }
+
+  if (is.macOS()) {
+    console.log('Running on macOS');
+  }
+
+  if (is.linux()) {
+    console.log('Running on Linux');
+  }
+
+
+  if (is.dev()) {
+    console.log('Running in development');
+  }
+  
   // SSL/TSL: this is the self signed certificate support
   app.on(
     'certificate-error',

@@ -10,7 +10,7 @@ import {
   Subject,
   SubjectRecord,
 } from '@prisma/client';
-import { IPCRoute } from '../../shared/constants';
+import { IPCRoute, LoginData } from '../../shared/constants';
 import { ipcRenderer, IpcRendererEvent } from 'electron';
 import type AppInfo from 'package.json';
 import { Notification as NotificationType } from '../types/notification';
@@ -19,6 +19,8 @@ export default {
   app: {
     info: () =>
       ipcRenderer.invoke(IPCRoute.APP_INFO) as Promise<typeof AppInfo>,
+    setOpenAtLogin: (openAtLogin: boolean) => ipcRenderer.send(IPCRoute.APP_OPEN_AT_LOGIN, openAtLogin),
+    update: () => ipcRenderer.send(IPCRoute.APP_UPDATE),
   },
   updater: {
     install: () => ipcRenderer.send(IPCRoute.UPDATER_INSTALL),
@@ -53,11 +55,11 @@ export default {
       }>,
     disconnect: () => ipcRenderer.invoke(IPCRoute.DATABASE_DISCONNECT),
     verifyDevice: () => ipcRenderer.invoke(IPCRoute.DATABASE_VERIFY_DEVICE),
-    registerDevice: (deviceName: string, labId: string, networkName: string) =>
+    registerDevice: (deviceName: string, labSecretKey: string, networkName: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_REGISTER_DEVICE,
         deviceName,
-        labId,
+        labSecretKey,
         networkName,
       ) as Promise<Device>,
     getNetworkNames: () =>
@@ -323,6 +325,28 @@ export default {
         count: number;
         error?: string;
       }>,
+    updateUser: ({ userId, email, contactNo, password, emailVerified }: {
+      userId: string;
+      email?: string;
+      contactNo?: string;
+      password?: string;
+      emailVerified?: Date;  // Add this line
+    }) => ipcRenderer.invoke(
+      IPCRoute.DATABASE_UPDATE_USER,
+      { userId, email, contactNo, password, emailVerified }
+    ) as Promise<{ success: boolean; message: string }>,
+    verifyUser: (identifier: string) =>
+      ipcRenderer.invoke(IPCRoute.AUTH_VERIFY_USER, identifier) as Promise<{
+        success: boolean;
+        message: string;
+        allowDirectLogin?: boolean;
+        userId?: string;
+      }>,
+    getLaboratoryStatus: async () => {
+      return ipcRenderer.invoke(IPCRoute.DATABASE_GET_LABORATORY_STATUS) as Promise<{
+        isRegistrationDisabled: boolean;
+      }>;
+    },
   },
   device: {
     init: () => ipcRenderer.send(IPCRoute.DEVICE_INITIATED),
@@ -371,15 +395,12 @@ export default {
       course: string;
       yearLevel: string;
       role: string;
-      email: string;
-      contactNo: string;
-      password: string;
     }) =>
       ipcRenderer.invoke(IPCRoute.AUTH_REGISTER, data) as Promise<{
         success: boolean;
         message: string;
       }>,
-    login: (data: { deviceId: string; email: string; password: string }) =>
+    login: (data: LoginData) =>
       ipcRenderer.invoke(IPCRoute.AUTH_LOGIN, data) as Promise<{
         success: boolean;
         message: string;
@@ -397,6 +418,7 @@ export default {
       return response;
     },
     verifyOtpAndResetPassword: (payload: {
+      userId: string;
       email: string;
       otp: string;
       newPassword: string;
@@ -405,6 +427,39 @@ export default {
         IPCRoute.VERIFY_OTP_AND_RESET_PASSWORD,
         payload,
       ) as Promise<{ success: boolean; message?: string }>,
+    verifyOtp: (payload: { 
+      userId: string; 
+      email: string; 
+      otp: string;
+      skipVerification?: boolean  // Add skipVerification flag
+    }) =>
+      ipcRenderer.invoke('VERIFY_OTP', payload) as Promise<{
+        success: boolean;
+        message?: string;
+      }>,
+    verifyUserEmail: (email: string) =>
+      ipcRenderer.invoke(IPCRoute.VERIFY_USER_EMAIL, email) as Promise<{
+        success: boolean;
+        message?: string;
+        userId?: string;
+      }>,
+    verifyPersonalInfo: (data: {
+      email: string;
+      firstName: string;
+      lastName: string;
+      schoolId: string;
+    }) => 
+      ipcRenderer.invoke(IPCRoute.VERIFY_PERSONAL_INFO, data) as Promise<{
+        success: boolean;
+        message?: string;
+        userId?: string;
+      }>,
+    verifyUser: (identifier: string) =>
+      ipcRenderer.invoke(IPCRoute.AUTH_VERIFY_USER, identifier) as Promise<{
+        success: boolean;
+        message: string;
+        allowDirectLogin?: boolean;
+      }>,
   },
   screen: {
     getScreenSourceId: () => ipcRenderer.invoke(IPCRoute.SCREEN_ID) as Promise<string>,

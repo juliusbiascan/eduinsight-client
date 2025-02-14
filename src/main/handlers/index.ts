@@ -6,6 +6,7 @@
 import is from 'electron-is';
 import AppInfo from 'package.json';
 import { app, ipcMain } from 'electron';
+import { updateElectronApp } from 'update-electron-app';
 import { IPCRoute } from '../../shared/constants';
 
 export { default as IPCWIndowHandler } from './window';
@@ -28,4 +29,17 @@ export function IPCGenericHandler() {
       version: is.production() ? app.getVersion() : AppInfo.version,
     })
   );
+
+  ipcMain.on(IPCRoute.APP_OPEN_AT_LOGIN, (event, openAtLogin) => {
+    app.setLoginItemSettings({ openAtLogin: openAtLogin });
+  });
+
+  ipcMain.on(IPCRoute.APP_UPDATE, () => {
+    setTimeout(() => {
+      updateElectronApp({
+        repo: 'juliusbiascan/eduinsight-client',
+        updateInterval: '1 hour',
+      });
+    }, 10000);
+  });
 }
