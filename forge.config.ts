@@ -113,6 +113,14 @@ const config: ForgeConfig = {
               js: './src/renderer/lib/preload.ts',
             },
           },
+          {
+            html: './src/renderer/assets/index.html',
+            js: './src/renderer/windows/about.tsx',
+            name: 'about_window',
+            preload: {
+              js: './src/renderer/lib/preload.ts',
+            },
+          },
         ],
       },
       port: 3001,

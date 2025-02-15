@@ -42,10 +42,10 @@ export default {
     closeSetup: () => ipcRenderer.send(IPCRoute.WINDOW_CLOSE_SETUP),
     openSetup: (data: string) =>
       ipcRenderer.send(IPCRoute.WINDOW_OPEN_SETUP, data),
-    createTray: () => ipcRenderer.send(IPCRoute.WINDOW_CREATE_TRAY),
     openInTray: (id: string) =>
       ipcRenderer.send(IPCRoute.WINDOW_OPEN_IN_TRAY, id),
-    removeTray: () => ipcRenderer.send(IPCRoute.WINDOW_REMOVE_TRAY),
+    // createTray: () => ipcRenderer.send(IPCRoute.WINDOW_CREATE_TRAY),
+    // removeTray: () => ipcRenderer.send(IPCRoute.WINDOW_REMOVE_TRAY),
   },
   database: {
     connect: (url: string) =>
@@ -55,12 +55,20 @@ export default {
       }>,
     disconnect: () => ipcRenderer.invoke(IPCRoute.DATABASE_DISCONNECT),
     verifyDevice: () => ipcRenderer.invoke(IPCRoute.DATABASE_VERIFY_DEVICE),
-    registerDevice: (deviceName: string, labSecretKey: string, networkName: string) =>
+    registerDevice: (
+      deviceName: string, 
+      labSecretKey: string, 
+      networkName: string,
+      connectionMode: string,
+      devicePurpose: string
+    ) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_REGISTER_DEVICE,
         deviceName,
         labSecretKey,
         networkName,
+        connectionMode,
+        devicePurpose,
       ) as Promise<Device>,
     getNetworkNames: () =>
       ipcRenderer.invoke(IPCRoute.DATABASE_GET_NETWORK_NAMES) as Promise<
@@ -347,6 +355,23 @@ export default {
         isRegistrationDisabled: boolean;
       }>;
     },
+    updateDevice: (
+      deviceId: string,
+      deviceName: string,
+      labSecretKey: string,
+      networkName: string,
+      connectionMode: string,
+      devicePurpose: string
+    ) =>
+      ipcRenderer.invoke(
+        IPCRoute.DATABASE_UPDATE_DEVICE,
+        deviceId,
+        deviceName,
+        labSecretKey,
+        networkName,
+        connectionMode,
+        devicePurpose,
+      ) as Promise<Device>,
   },
   device: {
     init: () => ipcRenderer.send(IPCRoute.DEVICE_INITIATED),

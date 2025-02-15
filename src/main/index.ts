@@ -10,6 +10,8 @@ import StoreManager from '@/main/lib/store';
 import Store from 'electron-store';
 import { handleSecondinstance } from "./lib/instance";
 import is from "electron-is";
+import { createTray, removeTray } from "./lib/tray-menu";
+import path from 'path';
 
 const store = StoreManager.getInstance();
 const deviceId = store.get('deviceId') as string;
@@ -17,6 +19,8 @@ const labId = store.get('labId') as string;
 
 function handleOnReady() {
 
+  createTray(path.join(__dirname, 'img/tray-icon.ico'));
+  
   Object.values(IPCHandlers).forEach((handler) => handler());
   Store.initRenderer();
 
@@ -106,6 +110,7 @@ function handleOnReady() {
   }
 
   app.on('window-all-closed', () => {
+    // removeTray();
     if (!store.get('deviceId')) app.quit();
   });
 

@@ -16,14 +16,9 @@ export enum ConnectionMode {
 export enum WindowIdentifier {
   Main = 'main_window',
   Dashboard = 'dashboard_window',
-  Down = 'down_window',
-  Maintainance = 'maintainance_window',
   Setup = 'setup_window',
-  Settings = 'settings_window',
-  SomethingWentWrong = 'sww_window',
-  Logout = 'logout_window',
   QuizPlayer = 'quiz_player_window',
-  Screen = 'screen_window',
+  About = 'about_window',
 }
 
 /**
@@ -150,6 +145,8 @@ export enum IPCRoute {
   VERIFY_USER_EMAIL = 'VERIFY_USER_EMAIL',
   VERIFY_PERSONAL_INFO = 'VERIFY_PERSONAL_INFO',
   AUTH_VERIFY_USER = 'AUTH_VERIFY_USER',
+
+  DATABASE_UPDATE_DEVICE = '/database/update_device',
 }
 
 export interface LoginData {

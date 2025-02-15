@@ -90,3 +90,6 @@ typings/
 
 # Electron-Forge
 out/
+
+# Ignore credentials file
+src/shared/config/credentials.ts

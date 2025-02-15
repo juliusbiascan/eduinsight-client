@@ -4,6 +4,8 @@ import { machineIdSync } from 'node-machine-id';
 import { getIPAddress, getNetworkNames } from '../lib/ipaddress';
 import { v4 as uuidv4 } from 'uuid';
 import {
+  ConnectionMode,
+  DevicePurpose,
   DeviceUserRole,
   Quiz,
   QuizQuestion,
@@ -17,11 +19,9 @@ import { hash, compare } from 'bcryptjs';
 import { startMonitoring, stopPowerMonitoring } from '../lib/monitoring';
 import crypto from 'crypto';
 import { sendOtpCodeEmail } from '../lib/mail';
-import { createTray, removeTray } from '../lib/tray-menu';
 import xlsx from 'xlsx';
 import csv from 'csv-parser';
 import fs from 'fs';
-import path from 'path';
 import StoreManager from '@/main/lib/store';
 
 const store = StoreManager.getInstance();
@@ -95,7 +95,7 @@ export default function () {
 
   ipcMain.handle(
     IPCRoute.DATABASE_REGISTER_DEVICE,
-    async (_e, deviceName: string, labSecretKey: string, networkName: string) => {
+    async (_e, deviceName: string, labSecretKey: string, networkName: string, connectionMode: string, devicePurpose: string) => {
       try {
         // Find lab by secret key
         const lab = await Database.prisma.labaratory.findFirst({
@@ -127,6 +127,8 @@ export default function () {
             devMACaddress: macAddress,
             isArchived: false,
             labId: lab.id, // Use the found lab's ID
+            connectionMode: connectionMode as ConnectionMode,
+            devicePurpose: devicePurpose as DevicePurpose,
           },
         });
 
@@ -137,6 +139,44 @@ export default function () {
         return device;
       } catch (error) {
         console.error('Error registering device:', error);
+        throw error;
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPCRoute.DATABASE_UPDATE_DEVICE,
+    async (_e, deviceId: string, deviceName: string, labSecretKey: string, networkName: string, connectionMode: string, devicePurpose: string) => {
+      try {
+        // Find lab by secret key
+        const lab = await Database.prisma.labaratory.findFirst({
+          where: { secretKey: labSecretKey }
+        });
+
+        if (!lab) {
+          throw new Error('Invalid lab secret key');
+        }
+
+        const ipAddress = getIPAddress();
+
+        const updatedDevice = await Database.prisma.device.update({
+          where: { id: deviceId },
+          data: {
+            name: deviceName,
+            devHostname: ipAddress[networkName][0],
+            labId: lab.id,
+            connectionMode: connectionMode as ConnectionMode,
+            devicePurpose: devicePurpose as DevicePurpose,
+          },
+        });
+
+        store.set('deviceId', updatedDevice.id);
+        store.set('labId', updatedDevice.labId);
+        store.delete('userId');
+
+        return updatedDevice;
+      } catch (error) {
+        console.error('Error updating device:', error);
         throw error;
       }
     },
@@ -852,7 +892,7 @@ export default function () {
       ]);
       store.set('userId', user.id);
       startMonitoring(device.id, user.id, device.labId);
-      createTray(path.join(__dirname, 'img/tray-icon.ico'));
+      
       return { success: true, message: 'Login successful' };
     } catch (error) {
       console.error('Login error:', error);
@@ -882,7 +922,6 @@ export default function () {
     });
 
     stopPowerMonitoring();
-    removeTray();
   });
 
   ipcMain.handle(IPCRoute.SEND_OTP, async (_, email: string) => {
@@ -1326,11 +1365,11 @@ export default function () {
   ipcMain.handle(IPCRoute.DATABASE_GET_LABORATORY_STATUS, async (_,) => {
     try {
       const deviceId = store.get('deviceId') as string;
-      // Get the device to find its laboratory
+      // Include lab relation explicitly in the query
       const device = await Database.prisma.device.findUnique({
         where: { id: deviceId },
         include: {
-          lab: true
+          lab: true // This will now work with the explicit relation
         }
       });
 

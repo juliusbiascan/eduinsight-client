@@ -34,6 +34,16 @@ enum YearLevel {
   FOURTH // 4th year
 }
 
+enum ConnectionMode {
+  LOCAL
+  REMOTE
+}
+
+enum DevicePurpose {
+  TEACHING
+  STUDENT
+}
+
 model User {
   id                    String                 @id @default(cuid())
   name                  String?
@@ -122,6 +132,8 @@ model Device {
   devHostname         String
   devMACaddress       String
   isArchived          Boolean
+  connectionMode      ConnectionMode        @default(LOCAL)
+  devicePurpose       DevicePurpose         @default(STUDENT)  
   isUsed              Boolean               @default(false)
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt

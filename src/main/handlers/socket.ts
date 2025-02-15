@@ -5,7 +5,6 @@ import { app, BrowserWindow, ipcMain, shell, Notification, desktopCapturer } fro
 import { Database, WindowManager } from '../lib';
 import { IPCRoute, WindowIdentifier } from '@/shared/constants';
 import { startMonitoring } from '../lib/monitoring';
-import { createTray } from '../lib/tray-menu';
 import fs from 'fs';
 import path from 'path';
 import StoreManager from '../lib/store';
@@ -608,6 +607,7 @@ export default function () {
 
   //handle device initiated event
   ipcMain.on(IPCRoute.DEVICE_INITIATED, async () => {
+    
     const device = await Database.prisma.device.findFirst({
       where: { id: deviceId },
     });
@@ -625,7 +625,6 @@ export default function () {
 
     if (activeUser) {
       startMonitoring(activeUser.userId, device.id, labId);
-      createTray(path.join(__dirname, 'img/tray-icon.ico'));
 
       const dashboard = WindowManager.get(
         WindowManager.WINDOW_CONFIGS.dashboard_window.id,

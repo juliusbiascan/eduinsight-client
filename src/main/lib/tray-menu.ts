@@ -12,7 +12,7 @@ export function showWindow() {
 }
 
 export function toggleWindow() {
-  mainWindow = WindowManager.get(WindowManager.WINDOW_CONFIGS.dashboard_window.id);
+  mainWindow = WindowManager.get(WindowManager.WINDOW_CONFIGS.main_window.id);
   if (mainWindow.isVisible()) {
     mainWindow.hide();
   } else {
@@ -24,21 +24,21 @@ const menuTemplate: MenuItemConstructorOptions[] = [
   {
     label: "About EduInsight",
     click: () => {
-      console.log("About EduInsight");
+      WindowManager.get(WindowManager.WINDOW_CONFIGS.about_window.id);
     }
   },
   {
     type: "separator"
   },
   {
-    label: "Preferences",
+    label: "Configurations",
     accelerator: "Cmd+,",
     click: () => {
       WindowManager.get(WindowManager.WINDOW_CONFIGS.setup_window.id);
     }
   },
   {
-    label: "Quit",
+    label: "Emergency Stop (Development)",
     accelerator: "Cmd+x",
     click: () => {
       app.quit();
@@ -55,6 +55,8 @@ export const createTray = (iconPath: string) => {
   }
   const menu = Menu.buildFromTemplate(menuTemplate);
   tray = new Tray(iconPath);
+  tray.setIgnoreDoubleClickEvents(true);
+  tray.focus();
   tray.on("click", () => {
     toggleWindow();
   });

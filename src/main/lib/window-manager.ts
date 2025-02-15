@@ -134,14 +134,14 @@ const WINDOW_CONFIGS: Record<string, WindowConfig> = {
       title: 'Quiz Player',
     },
   },
-  [WindowIdentifier.Settings]: {
-    id: WindowIdentifier.Settings,
+  [WindowIdentifier.About]: {
+    id: WindowIdentifier.About,
     url: null,
     options: {
       ...sharedWindowConfigs.frameless,
       height: 600,
       width: 500,
-      title: 'Settings',
+      title: 'About',
     },
   },
 };

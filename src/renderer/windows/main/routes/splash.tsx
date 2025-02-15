@@ -145,7 +145,7 @@ export function Splash() {
     const step = (end - start) / 20; // Smoother animation
     for (let i = start; i <= end && isMounted.current; i += step) {
       setProgress(Math.round(i));
-      await sleep(50);
+      //await sleep(50);
     }
   }, []);
 

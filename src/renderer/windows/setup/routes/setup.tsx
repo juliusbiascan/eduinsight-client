@@ -5,10 +5,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { zodResolver } from "@hookform/resolvers/zod"
 import { WindowIdentifier, ConnectionMode } from '@/shared/constants';
-import { Labaratory } from '@prisma/client';
+import { Device, Labaratory } from '@prisma/client';
 import { Toaster } from '@/renderer/components/ui/toaster';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiMonitor, FiServer, FiWifi, FiRefreshCw } from 'react-icons/fi';
@@ -24,13 +24,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/renderer/components/ui/alert-dialog"
+import { formatDatabaseUrl } from '@/shared/config/database';
 
+// Update formSchema to include ipAddress
 const formSchema = z.object({
   connectionMode: z.string().min(1, { message: "Please select a connection mode." }),
   deviceName: z.string().min(1, { message: "Device name is required." }),
   networkName: z.string().min(1, { message: "Please select a network." }),
   devicePurpose: z.string().min(1, { message: "Please select device purpose." }),
   labSecretKey: z.string().min(1, { message: "Lab secret key is required." }),
+  ipAddress: z.string().optional().refine((val) => {
+    if (!val) return true;
+    return /^(\d{1,3}\.){3}\d{1,3}$/.test(val);
+  }, { message: "Please enter a valid IP address" }),
 });
 
 enum SetupStatus {
@@ -187,6 +193,8 @@ export const DeviceSetup: React.FC = () => {
   const [isRetrying, setIsRetrying] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [formData, setFormData] = useState<z.infer<typeof formSchema> | null>(null);
+  const [showIpInput, setShowIpInput] = useState(false);
+  const [existingDevice, setExistingDevice] = useState<Device | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -195,11 +203,32 @@ export const DeviceSetup: React.FC = () => {
       deviceName: "",
       networkName: "",
       devicePurpose: "",
-      labSecretKey: ""
+      labSecretKey: "",
+      ipAddress: "",
     },
   });
 
+  // Add this effect to load saved IP when showing input
+  useEffect(() => {
+    if (showIpInput) {
+      
+      api.store.get('serverIpAddress').then((savedIp) => {
+        if (savedIp) {
+          form.setValue('ipAddress', savedIp);
+        }
+      });
+    }
+  }, [showIpInput]);
+
   const checkConnections = async () => {
+    const connectionMode = form.getValues('connectionMode');
+    const ipAddress = form.getValues('ipAddress');
+    
+    if (connectionMode === ConnectionMode.Local && !showIpInput) {
+      setShowIpInput(true);
+      return;
+    }
+
     setStatus(SetupStatus.CheckingConnections);
 
     // Reset states but keep retry count
@@ -216,8 +245,10 @@ export const DeviceSetup: React.FC = () => {
 
     // Step 1: Check server connection
     setStatus(SetupStatus.CheckingServer);
-    const connectionMode = form.getValues('connectionMode');
-    const socketUrl = connectionMode === ConnectionMode.Local ? process.env.LOCAL_SOCKET_URL : process.env.REMOTE_SOCKET_URL;
+    const socketUrl = connectionMode === ConnectionMode.Local 
+      ? `https://${ipAddress}:4000`  // Format URL with entered IP
+      : process.env.REMOTE_SOCKET_URL;
+    
     const socketConnected = await api.socket.test(socketUrl);
     setConnectionState(prev => ({ ...prev, server: socketConnected }));
     if (!socketConnected) {
@@ -239,7 +270,10 @@ export const DeviceSetup: React.FC = () => {
 
     // Step 2: Check database connection
     setStatus(SetupStatus.CheckingDatabase);
-    const dbUrl = connectionMode === ConnectionMode.Local ? process.env.LOCAL_DATABASE_URL : process.env.REMOTE_DATABASE_URL;
+    const dbUrl = connectionMode === ConnectionMode.Local 
+      ? formatDatabaseUrl(ipAddress)  // Use the formatDatabaseUrl helper
+      : process.env.REMOTE_DATABASE_URL;
+      
     const dbConnected = await api.database.connect(dbUrl);
     setConnectionState(prev => ({ ...prev, database: dbConnected.success }));
     if (!dbConnected.success) {
@@ -262,19 +296,47 @@ export const DeviceSetup: React.FC = () => {
     try {
       // Step 3: Gather data
       setStatus(SetupStatus.GatheringData);
-      const [labsData, networksData] = await Promise.all([
+
+      
+      const [labsData, networksData, existingDevice, savedIpAddress] = await Promise.all([
         api.database.getLabs(),
-        api.database.getNetworkNames()
+        api.database.getNetworkNames(),
+        api.database.getDevice(),
+        api.store.get('serverIpAddress')
       ]);
 
       setLabs(labsData);
       setNetworkNames(networksData);
 
-      // Load saved form data
-      const savedData = await api.store.get('deviceSetupData') as z.infer<typeof formSchema>;
-      if (savedData) {
-        form.reset(savedData);
-      } 
+      // Handle existing device data
+      if (existingDevice) {
+        setExistingDevice(existingDevice);
+        // Pre-fill form with existing device data and saved IP
+        form.reset({
+          connectionMode: existingDevice.connectionMode || ConnectionMode.Local,
+          deviceName: existingDevice.name,
+          networkName: existingDevice.devHostname,
+          devicePurpose: existingDevice.devicePurpose,
+          labSecretKey: "",  // For security, don't pre-fill secret key
+          ipAddress: savedIpAddress || "",  // Load saved IP address
+        });
+      }
+
+      // Load saved form data if no existing device
+      if (!existingDevice) {
+        const savedData = await api.store.get('deviceSetupData') as z.infer<typeof formSchema>;
+        if (savedData) {
+          form.reset({
+            ...savedData,
+            ipAddress: savedIpAddress || "",  // Add saved IP address to form data
+          });
+        }
+      }
+
+      // When IP is valid, save it to store
+      if (form.getValues('ipAddress')) {
+        api.store.set('serverIpAddress', form.getValues('ipAddress'));
+      }
 
       // Connection complete
       setStatus(SetupStatus.ConnectionComplete);
@@ -315,6 +377,7 @@ export const DeviceSetup: React.FC = () => {
       return;
     }
 
+    // Update formData state and show confirmation dialog
     setFormData(values);
     setShowConfirmation(true);
   }
@@ -323,13 +386,25 @@ export const DeviceSetup: React.FC = () => {
     if (!formData) return;
     
     setStatus(SetupStatus.Setup);
-    // Save form data
-    api.store.set('deviceSetupData', formData);
-    api.database.registerDevice(
-      formData.deviceName,
-      formData.labSecretKey,
-      formData.networkName,
-    )
+
+    const setupPromise = existingDevice 
+      ? api.database.updateDevice(
+          existingDevice.id,
+          formData.deviceName,
+          formData.labSecretKey,
+          formData.networkName,
+          formData.connectionMode,
+          formData.devicePurpose,
+        )
+      : api.database.registerDevice(
+          formData.deviceName,
+          formData.labSecretKey,
+          formData.networkName,
+          formData.connectionMode,
+          formData.devicePurpose,
+        );
+
+    setupPromise
       .then(() => {
         api.store.set('devicePurpose', formData.devicePurpose);
         setStatus(SetupStatus.SetupSuccessful);
@@ -410,8 +485,16 @@ export const DeviceSetup: React.FC = () => {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className="pt-2"
+                className="pt-2 space-y-2"
               >
+                {form.getValues('connectionMode') === ConnectionMode.Local && (
+                  <Button
+                    onClick={() => setShowIpInput(true)}
+                    className="w-full bg-blue-500/90 hover:bg-blue-600/90 text-white text-xs py-1.5 h-8 rounded-md"
+                  >
+                    Change IP Address
+                  </Button>
+                )}
                 <Button
                   onClick={handleRetry}
                   disabled={isRetrying}
@@ -427,7 +510,6 @@ export const DeviceSetup: React.FC = () => {
       </motion.div>
     );
   };
-
 
   const renderFormSkeleton = () => {
     return (
@@ -509,12 +591,17 @@ export const DeviceSetup: React.FC = () => {
   );
 
   const renderConfirmationDialog = () => (
-    <AlertDialog open={showConfirmation} onOpenChange={setShowConfirmation}>
+    <AlertDialog open={showConfirmation}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Confirm Device Setup</AlertDialogTitle>
+          <AlertDialogTitle>
+            {existingDevice ? 'Update Device Setup' : 'Confirm Device Setup'}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to complete the device setup? Please verify the following details:
+            {existingDevice 
+              ? 'Are you sure you want to update this device\'s configuration?'
+              : 'Are you sure you want to complete the device setup?'
+            }
             <div className="mt-4 space-y-2 text-sm text-gray-900">
               <p><span className="font-medium">Device Purpose:</span> {formData?.devicePurpose === 'TEACHING' ? 'Teaching Device' : 'Student Device'}</p>
               <p><span className="font-medium">Device Name:</span> {formData?.deviceName}</p>
@@ -533,16 +620,180 @@ export const DeviceSetup: React.FC = () => {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={handleConfirmedSubmit}
-            className="bg-gradient-to-r from-[#C9121F] to-[#EBC42E] hover:opacity-90"
-          >
+          <AlertDialogCancel onClick={() => setShowConfirmation(false)}>
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction onClick={handleConfirmedSubmit}>
             Confirm Setup
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+
+  const renderIpAddressInput = () => {
+    if (!showIpInput || form.getValues('connectionMode') !== ConnectionMode.Local) return null;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="absolute inset-0 flex items-center justify-center bg-white/95 backdrop-blur-[2px] rounded-xl z-40"
+      >
+        <div className="w-full max-w-[280px] p-4">
+          <Form {...form}>
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                const ipAddress = form.getValues('ipAddress');
+                if (!ipAddress) {
+                  form.setError('ipAddress', { message: 'IP address is required' });
+                  return;
+                }
+                // Save IP address when submitting
+                api.store.set('serverIpAddress', ipAddress);
+                setShowIpInput(false);
+                checkConnections();
+              }} 
+              className="space-y-4"
+            >
+              <div className="text-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Local Network Setup</h3>
+                <p className="text-sm text-gray-500">Enter the IP address of your EduInsight server</p>
+              </div>
+
+              <FormField
+                control={form.control}
+                name="ipAddress"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Server IP Address</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="192.168.1.1"
+                        {...field}
+                        className="text-center"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setShowIpInput(false);
+                    setStage(SetupStage.ConnectionMode);
+                  }}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
+                >
+                  Connect
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </div>
+      </motion.div>
+    );
+  };
+
+  const renderDeviceForm = () => (
+    <Form {...form}>
+      <form 
+        id="setupForm" 
+        onSubmit={form.handleSubmit(onSubmit)} 
+        className="space-y-3"
+      >
+        <FormField
+          control={form.control}
+          name="devicePurpose"
+          render={({ field }) => (
+            <FormItem className="space-y-1">
+              <FormLabel className="text-xs font-medium">Device Purpose</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger className="h-9 text-sm bg-white/50 border-gray-200"> {/* Smaller height */}
+                    <SelectValue placeholder="Select device purpose" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="TEACHING">Teaching Device</SelectItem>
+                  <SelectItem value="STUDENT">Student Device</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage className="text-[11px]" /> {/* Smaller error message */}
+            </FormItem>
+          )}
+        />
+        
+        <FormField
+          control={form.control}
+          name="deviceName"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium text-gray-700">Device Name</FormLabel>
+              <FormControl>
+                <Input placeholder="Device name" {...field} className="bg-white border border-blue-200 rounded focus:border-purple-400" />
+              </FormControl>
+              <FormMessage className="text-xs text-red-500" />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="labSecretKey"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium text-gray-700">Lab Secret Key</FormLabel>
+              <FormControl>
+                <Input 
+                  type="text"
+                  placeholder="Enter lab secret key" 
+                  {...field} 
+                  className="bg-white border border-blue-200 rounded focus:border-purple-400" 
+                />
+              </FormControl>
+              <FormMessage className="text-xs text-red-500" />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="networkName"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium text-gray-700">Network</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger className="bg-white border border-blue-200 rounded focus:border-purple-400">
+                    <SelectValue placeholder="Select a network" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {networkNames.map((name) => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage className="text-xs text-red-500" />
+            </FormItem>
+          )}
+        />
+
+      </form>
+    </Form>
   );
 
   return (
@@ -669,98 +920,16 @@ export const DeviceSetup: React.FC = () => {
                     </div>
 
                     <div className="flex-1 overflow-y-auto pr-2">
-                      <Form {...form}>
-                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3"> {/* Reduced spacing */}
-                          {/* Form Fields remain the same but with updated styles */}
-                          <FormField
-                            control={form.control}
-                            name="devicePurpose"
-                            render={({ field }) => (
-                              <FormItem className="space-y-1">
-                                <FormLabel className="text-xs font-medium">Device Purpose</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                  <FormControl>
-                                    <SelectTrigger className="h-9 text-sm bg-white/50 border-gray-200"> {/* Smaller height */}
-                                      <SelectValue placeholder="Select device purpose" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    <SelectItem value="TEACHING">Teaching Device</SelectItem>
-                                    <SelectItem value="STUDENT">Student Device</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage className="text-[11px]" /> {/* Smaller error message */}
-                              </FormItem>
-                            )}
-                          />
-                          
-                          <FormField
-                            control={form.control}
-                            name="deviceName"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="text-sm font-medium text-gray-700">Device Name</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="Device name" {...field} className="bg-white border border-blue-200 rounded focus:border-purple-400" />
-                                </FormControl>
-                                <FormMessage className="text-xs text-red-500" />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={form.control}
-                            name="labSecretKey"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="text-sm font-medium text-gray-700">Lab Secret Key</FormLabel>
-                                <FormControl>
-                                  <Input 
-                                    type="text"
-                                    placeholder="Enter lab secret key" 
-                                    {...field} 
-                                    className="bg-white border border-blue-200 rounded focus:border-purple-400" 
-                                  />
-                                </FormControl>
-                                <FormMessage className="text-xs text-red-500" />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={form.control}
-                            name="networkName"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="text-sm font-medium text-gray-700">Network</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                  <FormControl>
-                                    <SelectTrigger className="bg-white border border-blue-200 rounded focus:border-purple-400">
-                                      <SelectValue placeholder="Select a network" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {networkNames.map((name) => (
-                                      <SelectItem key={name} value={name}>{name}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage className="text-xs text-red-500" />
-                              </FormItem>
-                            )}
-                          />
-
-                        </form>
-                      </Form>
+                      {renderDeviceForm()}
                     </div>
 
                     <div className="pt-3 mt-2 border-t"> {/* Reduced spacing */}
                       <Button
+                        form="setupForm"
                         type="submit"
-                        onClick={form.handleSubmit(onSubmit)}
                         className="w-full bg-gradient-to-r from-[#C9121F] to-[#EBC42E] hover:opacity-90 text-white py-2 rounded-lg text-sm"
                       >
-                        Complete Setup
+                        {existingDevice ? 'Update':  'Complete Setup'}
                       </Button>
                     </div>
                     {connectionState.error && renderConnectionError()}
@@ -780,6 +949,7 @@ export const DeviceSetup: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+      {renderIpAddressInput()}
       {renderConfirmationDialog()}
       <Toaster />
     </motion.div>
