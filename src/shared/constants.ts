@@ -147,6 +147,7 @@ export enum IPCRoute {
   AUTH_VERIFY_USER = 'AUTH_VERIFY_USER',
 
   DATABASE_UPDATE_DEVICE = '/database/update_device',
+  DATABASE_ARCHIVE_DEVICE = '/database/archive_device',
 }
 
 export interface LoginData {

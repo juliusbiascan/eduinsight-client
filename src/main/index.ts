@@ -10,7 +10,8 @@ import StoreManager from '@/main/lib/store';
 import Store from 'electron-store';
 import { handleSecondinstance } from "./lib/instance";
 import is from "electron-is";
-import { createTray, removeTray } from "./lib/tray-menu";
+import { createTray } from "./lib/tray-menu";
+
 import path from 'path';
 
 const store = StoreManager.getInstance();
@@ -20,7 +21,7 @@ const labId = store.get('labId') as string;
 function handleOnReady() {
 
   createTray(path.join(__dirname, 'img/tray-icon.ico'));
-  
+
   Object.values(IPCHandlers).forEach((handler) => handler());
   Store.initRenderer();
 
@@ -77,7 +78,7 @@ function handleOnReady() {
   if (is.dev()) {
     console.log('Running in development');
   }
-  
+
   // SSL/TSL: this is the self signed certificate support
   app.on(
     'certificate-error',

@@ -8,7 +8,7 @@ import LoadingSpinner from '@/renderer/components/ui/loading-spinner';
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 
 const ConnectionStatus = ({ isConnected }: { isConnected: boolean }) => (
-  <div className="flex items-center space-x-3 bg-white px-5 py-3 rounded-full shadow-md border border-[#1A1617]/5">
+  <div className="inline-flex items-center space-x-3 bg-white px-5 py-3 rounded-full shadow-md border border-[#1A1617]/5">
     <motion.div
       className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-[#C9121F]'
         }`}
@@ -40,7 +40,9 @@ const MainLayout = () => {
       await new Promise(resolve => setTimeout(resolve, 1000)); // Minimum loading time
       const appInfo = await api.app.info();
       setVersion(appInfo.version);
-      api.app.update();
+      api.window.receive('shutdown', () => {
+        navigate('/logout');
+      });
     } catch (error) {
       console.error('Connection check failed:', error);
       navigate('/error');

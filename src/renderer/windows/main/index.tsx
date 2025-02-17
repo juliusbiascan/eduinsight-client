@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { Routes, Route, HashRouter } from 'react-router-dom';
 import MainLayout from './routes/layout';
 import LoginPage from './routes/login';
+import LogoutPage from './routes/logout';
 import ServerDown from './routes/down';
 import { SomethingWentWrong } from './routes/sww';
 import SignUpForm from './routes/signup';
@@ -19,6 +20,7 @@ function Index() {
           <Route index element={<Splash />} />
           <Route path="login" element={<LoginPage />} />
           <Route path="signup" element={<SignUpForm />} />
+          <Route path="logout" element={<LogoutPage />} />
           <Route path="reset" element={<ResetPasswordPage />} />
           <Route path="terms" element={<TermsPage />} />{' '}
           {/* Add TermsPage route */}

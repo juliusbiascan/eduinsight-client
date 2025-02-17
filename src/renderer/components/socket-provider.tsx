@@ -12,8 +12,9 @@ interface SocketContextType {
 const SocketContext = createContext<SocketContextType | null>(null);
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  
-  const [socketUrl , setSocketUrl] = useState<string>('');
+
+  const [socketUrl, setSocketUrl] = useState<string>('');
+  const [connectionMode, setConnectionMode] = useState<string>('');
 
   const [socketState, setSocketState] = useState<SocketContextType>({
     socket: null,
@@ -25,23 +26,38 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const fetchSocketUrl = async () => {
       const socketUrl = await api.store.get('socketUrl');
+      const savedData = await api.store.get('deviceSetupData') as any;
+      if (!savedData) {
+        throw new Error('Device setup data not found');
+      }
+
+      const connectionMode = savedData.connectionMode;
+
       if (!socketUrl) {
         throw new Error('Socket URL not found');
       }
+
+      if (!connectionMode) {
+        throw new Error('Connection mode not found');
+      }
+
+      setConnectionMode(connectionMode);
       setSocketUrl(socketUrl);
     };
     fetchSocketUrl();
   }, []);
 
   useEffect(() => {
-   
+
     if (!socketUrl) {
       return;
     }
 
     console.log('Connecting to server:', socketUrl);
-    
-    const socketInstance = initSocket(socketUrl);
+
+
+
+    const socketInstance = initSocket(socketUrl, connectionMode === 'REMOTE');
 
     function onConnect() {
       console.log('Connected to server');

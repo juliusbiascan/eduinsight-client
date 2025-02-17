@@ -1,4 +1,3 @@
-import { io } from "socket.io-client";
 import http from 'http';
 import https from 'https';
 import { app, BrowserWindow, ipcMain, shell, Notification, desktopCapturer } from 'electron';
@@ -9,32 +8,25 @@ import fs from 'fs';
 import path from 'path';
 import StoreManager from '../lib/store';
 import { FirewallManager } from '../lib/firewall';
+import { initSocket } from "@/renderer/lib/socket";
+import ElectronShutdownHandler from '@paymoapp/electron-shutdown-handler';
 
 export default function () {
   const store = StoreManager.getInstance();
+  const savedData = store.get('deviceSetupData') as any;
   const deviceId = store.get('deviceId') as string;
   const socketUrl = store.get('socketUrl') as string;
   const labId = store.get('labId') as string;
+  const connectionMode = savedData.connectionMode as string;
 
-  function setupSocketEventListeners({ id }: { id: string }) {
+  async function setupSocketEventListeners({ id }: { id: string }) {
 
     if (!socketUrl) {
       console.error('Socket URL not found');
       return;
     }
 
-    const socket = io(socketUrl, {
-      secure: socketUrl.startsWith('https'),
-      transports: ['websocket'], 
-      reconnection: true,
-      reconnectionAttempts: Infinity, // Changed from 5 to Infinity
-      reconnectionDelay: 1000,
-      timeout: 20000,
-      forceNew: true,
-      extraHeaders: {
-        'User-Agent': `EduInsight Client ${app.getVersion()}`
-      }
-    });
+    const socket = initSocket(socketUrl, connectionMode === 'REMOTE');
 
     socket.on('connect', () => {
       //setup socket event listeners
@@ -607,7 +599,7 @@ export default function () {
 
   //handle device initiated event
   ipcMain.on(IPCRoute.DEVICE_INITIATED, async () => {
-    
+
     const device = await Database.prisma.device.findFirst({
       where: { id: deviceId },
     });
@@ -633,6 +625,42 @@ export default function () {
       dashboard.maximize();
       dashboard.show();
       dashboard.focus();
+
+      ElectronShutdownHandler.setWindowHandle(dashboard.getNativeWindowHandle());
+      ElectronShutdownHandler.blockShutdown(
+        'Logging out device please wait...',
+      );
+
+      ElectronShutdownHandler.on('shutdown', async () => {
+
+        dashboard.webContents.send('shutdown');
+
+        const activeUser = await Database.prisma.activeDeviceUser.findFirst({
+          where: { deviceId: deviceId, labId: labId },
+        });
+
+        if (!activeUser) {
+          ElectronShutdownHandler.releaseShutdown();
+          app.quit();
+        }
+
+        await Database.prisma.activeDeviceUser.deleteMany({
+          where: {
+            deviceId: activeUser.deviceId,
+            userId: activeUser.userId,
+          },
+        });
+
+        await Database.prisma.device.update({
+          where: { id: activeUser.deviceId },
+          data: { isUsed: false },
+        });
+
+        setTimeout(() => {
+          ElectronShutdownHandler.releaseShutdown();
+          app.quit();
+        }, 10_000);
+      });
 
       store.set('userId', activeUser.userId);
     } else {

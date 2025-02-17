@@ -20,7 +20,6 @@ export default {
     info: () =>
       ipcRenderer.invoke(IPCRoute.APP_INFO) as Promise<typeof AppInfo>,
     setOpenAtLogin: (openAtLogin: boolean) => ipcRenderer.send(IPCRoute.APP_OPEN_AT_LOGIN, openAtLogin),
-    update: () => ipcRenderer.send(IPCRoute.APP_UPDATE),
   },
   updater: {
     install: () => ipcRenderer.send(IPCRoute.UPDATER_INSTALL),
@@ -131,7 +130,7 @@ export default {
     getSubjectsByUserId: (userId: string) =>
       ipcRenderer.invoke(
         IPCRoute.DATABASE_GET_SUBJECTS_BY_USER_ID,
-        userId,
+      userId,
       ) as Promise<Array<Subject>>,
     getSubjectById: (subjectId: string) =>
       ipcRenderer.invoke(
@@ -371,6 +370,11 @@ export default {
         networkName,
         connectionMode,
         devicePurpose,
+      ) as Promise<Device>,
+    archiveDevice: (deviceId: string) =>
+      ipcRenderer.invoke(
+        IPCRoute.DATABASE_ARCHIVE_DEVICE,
+        deviceId,
       ) as Promise<Device>,
   },
   device: {

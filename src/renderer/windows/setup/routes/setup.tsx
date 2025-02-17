@@ -195,6 +195,7 @@ export const DeviceSetup: React.FC = () => {
   const [formData, setFormData] = useState<z.infer<typeof formSchema> | null>(null);
   const [showIpInput, setShowIpInput] = useState(false);
   const [existingDevice, setExistingDevice] = useState<Device | null>(null);
+  const [willArchive, setWillArchive] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -387,6 +388,26 @@ export const DeviceSetup: React.FC = () => {
     
     setStatus(SetupStatus.Setup);
 
+    // If device exists and will be archived, call archive endpoint
+    if (existingDevice && willArchive) {
+      api.database.archiveDevice(existingDevice.id)
+        .then(() => {
+          setStatus(SetupStatus.SetupSuccessful);
+          setTimeout(() => {
+            setStatus(null);
+            api.window.closeSetup();
+            api.window.open(WindowIdentifier.Main);
+          }, 1000);
+        })
+        .catch((error) => {
+          console.error("Archive failed:", error);
+          setStatus(SetupStatus.SetupFailed);
+          setTimeout(() => setStatus(null), 1000);
+        });
+      return;
+    }
+
+    // Otherwise proceed with normal update/register
     const setupPromise = existingDevice 
       ? api.database.updateDevice(
           existingDevice.id,
@@ -607,15 +628,31 @@ export const DeviceSetup: React.FC = () => {
               <p><span className="font-medium">Device Name:</span> {formData?.deviceName}</p>
               <p><span className="font-medium">Network:</span> {formData?.networkName}</p>
             </div>
-            <div className="mt-4 flex items-center justify-between border-t pt-4">
-              <label htmlFor="open-startup" className="text-sm font-medium text-gray-700">
-                Open at Startup
-              </label>
-              <Switch
-                id="open-startup"
-                onCheckedChange={handleOpenAtStartup}
-                className="data-[state=checked]:bg-[#C9121F]"
-              />
+            <div className="mt-4 flex flex-col gap-4 border-t pt-4">
+              <div className="flex items-center justify-between">
+                <label htmlFor="open-startup" className="text-sm font-medium text-gray-700">
+                  Open at Startup
+                </label>
+                <Switch
+                  id="open-startup"
+                  onCheckedChange={handleOpenAtStartup}
+                  className="data-[state=checked]:bg-[#C9121F]"
+                />
+              </div>
+              
+              {existingDevice && !existingDevice.isArchived && (
+                <div className="flex items-center justify-between">
+                  <label htmlFor="archive-device" className="text-sm font-medium text-gray-700">
+                    Mark as Archived
+                  </label>
+                  <Switch
+                    id="archive-device"
+                    checked={willArchive}
+                    onCheckedChange={setWillArchive}
+                    className="data-[state=checked]:bg-red-500"
+                  />
+                </div>
+              )}
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -624,7 +661,7 @@ export const DeviceSetup: React.FC = () => {
             Cancel
           </AlertDialogCancel>
           <AlertDialogAction onClick={handleConfirmedSubmit}>
-            Confirm Setup
+            {existingDevice ? 'Update' : 'Confirm Setup'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

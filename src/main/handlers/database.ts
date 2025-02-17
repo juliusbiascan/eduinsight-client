@@ -182,6 +182,23 @@ export default function () {
     },
   );
 
+  ipcMain.handle(
+    IPCRoute.DATABASE_ARCHIVE_DEVICE,
+    async (_e, deviceId: string) => {
+      try {
+        const updatedDevice = await Database.prisma.device.update({
+          where: { id: deviceId },
+          data: { isArchived: true },
+        });
+
+        return updatedDevice;
+      } catch (error) {
+        console.error('Error archiving device:', error);
+        throw error;
+      }
+    },
+  );
+
   ipcMain.handle(IPCRoute.DATABASE_GET_LABS, () => {
     try {
       const labs = Database.prisma.labaratory.findMany();
@@ -1292,19 +1309,37 @@ export default function () {
     schoolId: string;
   }) => {
     try {
+      // Find user by schoolId or email
       const user = await Database.prisma.deviceUser.findFirst({
         where: {
-          email: data.email,
-          firstName: data.firstName,
-          lastName: data.lastName,
-          schoolId: data.schoolId
+          OR: [
+            { email: data.email },
+            { schoolId: data.schoolId }
+          ],
+          AND: {
+            firstName: {
+              equals: data.firstName,
+           
+            },
+            lastName: {
+              equals: data.lastName,
+            }
+          }
         }
       });
 
       if (!user) {
         return {
           success: false,
-          message: 'The information provided does not match our records.'
+          message: 'The provided name does not match our records.'
+        };
+      }
+
+      // Additional verification that user has no password set
+      if (user.password && user.password !== '') {
+        return {
+          success: false,
+          message: 'This account requires password authentication.'
         };
       }
 
@@ -1368,17 +1403,13 @@ export default function () {
       // Include lab relation explicitly in the query
       const device = await Database.prisma.device.findUnique({
         where: { id: deviceId },
-        include: {
-          lab: true // This will now work with the explicit relation
-        }
       });
 
-      if (!device || !device.lab) {
-        throw new Error('Laboratory not found');
-      }
-
+      const lab = await Database.prisma.labaratory.findUnique({
+        where: { id: device.labId },
+      });
       return {
-        isRegistrationDisabled: device.lab.isRegistrationDisabled,
+        isRegistrationDisabled: lab.isRegistrationDisabled,
       };
     } catch (error) {
       console.error('Error getting laboratory status:', error);
